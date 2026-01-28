@@ -1,7 +1,6 @@
 """Fetch market data from Yahoo Finance."""
 from datetime import datetime
 
-import pandas as pd
 import yfinance as yf
 
 from .schemas import Asset, PriceData
