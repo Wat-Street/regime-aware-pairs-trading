@@ -1,3 +1,5 @@
+"""Core data models for the pairs trading system."""
+
 from typing import Optional
 
 import pandas as pd
@@ -44,6 +46,7 @@ class PriceData(BaseModel):
 
     df: pd.DataFrame  # columns: open, high, low, close, volume
     symbol: str
+    source: str = "yfinance"  # data provider name
 
     @field_validator("df")
     @classmethod
@@ -53,6 +56,8 @@ class PriceData(BaseModel):
         required = {"open", "high", "low", "close", "volume"}
         if not required.issubset(set(v.columns)):
             raise ValueError(f"DataFrame must have columns: {required}")
+        if not isinstance(v.index, pd.DatetimeIndex):
+            raise ValueError("DataFrame index must be DatetimeIndex")
         return v
 
     @property

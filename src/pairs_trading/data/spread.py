@@ -1,10 +1,14 @@
 """Compute spread, hedge ratio, and z-score for pairs."""
 
+from datetime import datetime
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 from statsmodels.regression.linear_model import OLS
 from statsmodels.tools import add_constant
 
+from .fetcher import fetch_pair_data
 from .schemas import Pair, PriceData, SpreadData
 
 
@@ -71,22 +75,47 @@ def compute_zscore(spread: pd.Series, lookback: int = 20) -> pd.Series:
 
 def compute_spread(
     pair: Pair,
-    data_a: PriceData,
-    data_b: PriceData,
+    data_a: Optional[PriceData] = None,
+    data_b: Optional[PriceData] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    source: str = "yfinance",
     zscore_lookback: int = 20,
 ) -> SpreadData:
     """
     Compute spread data for a pair.
 
+    Can either pass pre-fetched data OR date range to auto-fetch.
+
+    Usage:
+        # Option 1: Pass pre-fetched data
+        spread_data = compute_spread(pair, data_a, data_b)
+
+        # Option 2: Auto-fetch with dates
+        spread_data = compute_spread(pair, start_date=start, end_date=end)
+
     Args:
         pair: The Pair object
-        data_a: PriceData for asset A
-        data_b: PriceData for asset B
+        data_a: PriceData for asset A (optional if dates provided)
+        data_b: PriceData for asset B (optional if dates provided)
+        start_date: Start date for auto-fetch
+        end_date: End date for auto-fetch
+        source: Data provider for auto-fetch
         zscore_lookback: Rolling window for z-score calculation
 
     Returns:
         SpreadData with spread, z-score, hedge ratio, half-life
     """
+    # Auto-fetch if data not provided
+    if data_a is None or data_b is None:
+        if start_date is None or end_date is None:
+            raise ValueError(
+                "Must provide either (data_a, data_b) or (start_date, end_date)"
+            )
+        data_a, data_b = fetch_pair_data(
+            pair.asset_a, pair.asset_b, start_date, end_date, source
+        )
+
     price_a = data_a.close
     price_b = data_b.close
 
