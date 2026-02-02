@@ -5,10 +5,14 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "arch>=8.0.0",
     "matplotlib>=3.10.8",
     "numpy>=2.4.1",
     "pandas>=3.0.0",
+    "pydantic>=2.12.5",
     "scipy>=1.17.0",
+    "statsmodels>=0.14.6",
+    "yfinance>=1.1.0",
 ]
 
 [dependency-groups]
