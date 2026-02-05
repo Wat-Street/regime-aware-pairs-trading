@@ -173,6 +173,11 @@ venv.bak/
 # mkdocs documentation
 /site
 
+# Outputs
+output/
+outputs/
+notebooks/output/
+
 # mypy
 .mypy_cache/
 .dmypy.json
