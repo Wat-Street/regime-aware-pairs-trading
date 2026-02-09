@@ -1829,7 +1829,7 @@ wheels = [
 [[package]]
 name = "regime-aware-pairs-trading"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "arch" },
     { name = "matplotlib" },
