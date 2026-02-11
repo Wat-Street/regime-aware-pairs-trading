@@ -1,4 +1,5 @@
 """Test spread calculations."""
+
 from datetime import datetime
 
 import numpy as np
@@ -19,7 +20,7 @@ from pairs_trading.data.spread import (
 def test_hedge_ratio():
     """Test hedge ratio with synthetic data."""
     print("\n=== Test 1: Hedge Ratio ===")
-    
+
     np.random.seed(42)
     n = 100
     true_hedge_ratio = 1.5
@@ -45,7 +46,7 @@ def test_hedge_ratio():
 def test_zscore():
     """Test z-score with synthetic data."""
     print("\n=== Test 2: Z-Score ===")
-    
+
     spread = pd.Series([10, 12, 11, 13, 15, 14, 12, 10, 8, 12, 14, 16, 15, 13, 11])
     lookback = 5
 
@@ -66,7 +67,7 @@ def test_zscore():
 def test_half_life():
     """Test half-life with mean-reverting series."""
     print("\n=== Test 3: Half-Life ===")
-    
+
     np.random.seed(42)
     n = 500
     theta = 0.1
@@ -75,7 +76,9 @@ def test_half_life():
 
     spread_mr = [0]
     for i in range(1, n):
-        spread_mr.append(spread_mr[-1] - theta * (spread_mr[-1] - mu) + sigma * np.random.randn())
+        spread_mr.append(
+            spread_mr[-1] - theta * (spread_mr[-1] - mu) + sigma * np.random.randn()
+        )
 
     spread_mr = pd.Series(spread_mr)
     half_life = compute_half_life(spread_mr)
@@ -91,7 +94,7 @@ def test_half_life():
 def test_real_data():
     """Test with real MSFT vs AAPL data."""
     print("\n=== Test 4: Real Data (MSFT vs AAPL) ===")
-    
+
     asset_a = Asset(symbol="MSFT")
     asset_b = Asset(symbol="AAPL")
     pair = Pair(asset_a=asset_a, asset_b=asset_b)
@@ -106,7 +109,9 @@ def test_real_data():
     print(f"Data points: {len(spread_data.spread)}")
     print(f"Hedge ratio: {spread_data.hedge_ratio:.4f}")
     print(f"Half-life: {spread_data.half_life:.2f} days")
-    print(f"Z-score range: [{spread_data.z_score.min():.2f}, {spread_data.z_score.max():.2f}]")
+    print(
+        f"Z-score range: [{spread_data.z_score.min():.2f}, {spread_data.z_score.max():.2f}]"
+    )
 
     # Verify manually
     y = data_a.close.values
@@ -122,12 +127,12 @@ if __name__ == "__main__":
     print("=" * 50)
     print("SPREAD CALCULATION TESTS")
     print("=" * 50)
-    
+
     test_hedge_ratio()
     test_zscore()
     test_half_life()
     test_real_data()
-    
+
     print("\n" + "=" * 50)
     print("ALL TESTS PASSED ✓")
     print("=" * 50)
