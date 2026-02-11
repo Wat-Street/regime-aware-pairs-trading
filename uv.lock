@@ -1832,6 +1832,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "arch" },
+    { name = "ipykernel" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
@@ -1852,6 +1853,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "arch", specifier = ">=8.0.0" },
+    { name = "ipykernel", specifier = ">=7.1.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "numpy", specifier = ">=2.4.1" },
     { name = "pandas", specifier = ">=3.0.0" },
