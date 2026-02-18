@@ -1,6 +1,7 @@
 """Test spread calculations."""
 
 from datetime import datetime
+import importlib.util
 
 import numpy as np
 import pandas as pd
@@ -167,9 +168,7 @@ def test_arma_garch_fit():
     """Test ARMA(1,1)+GARCH(1,1)-t fitting pipeline."""
     print("\n=== Test 7: ARMA+GARCH ===")
 
-    try:
-        import arch # safety check to ensure the arch package is available for this test
-    except ImportError:
+    if importlib.util.find_spec("arch") is None:
         print("Skipping ARMA+GARCH test: 'arch' package not installed")
         return
 
