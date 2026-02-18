@@ -7,9 +7,11 @@ import numpy as np
 import pandas as pd
 from statsmodels.regression.linear_model import OLS
 from statsmodels.tools import add_constant
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.stattools import adfuller
 
 from .fetcher import fetch_pair_data
-from .schemas import Pair, PriceData, SpreadData
+from .schemas import ArmaGarchResult, CointegrationResult, Pair, PriceData, SpreadData
 
 
 def compute_hedge_ratio(price_a: pd.Series, price_b: pd.Series) -> float:
@@ -71,6 +73,100 @@ def compute_zscore(spread: pd.Series, lookback: int = 20) -> pd.Series:
 
     z_score = (spread - mean) / std
     return z_score
+
+
+def test_cointegration(spread: pd.Series, alpha: float = 0.05) -> CointegrationResult:
+    """
+    Test spread stationarity via ADF unit-root test.
+
+    If p-value < alpha, treat spread as stationary (cointegration-compatible).
+    """
+    # Work on a clean numeric series so statsmodels receives valid input.
+    spread_clean = spread.dropna().astype(float)
+    if len(spread_clean) < 20:
+        raise ValueError("Spread series must have at least 20 non-null observations")
+
+    # ADF null hypothesis: unit root (non-stationary spread).
+    test_statistic, p_value, _, _, critical_values, _ = adfuller(
+        spread_clean, autolag="AIC"
+    )
+    return CointegrationResult(
+        test_statistic=float(test_statistic),
+        p_value=float(p_value),
+        critical_values={k: float(v) for k, v in critical_values.items()},
+        is_stationary=bool(p_value < alpha),
+        alpha=alpha,
+    )
+
+
+def fit_arma_garch(spread: pd.Series) -> ArmaGarchResult:
+    """
+    Fit ARMA(1,1) on spread and GARCH(1,1)-t on ARMA residuals.
+
+    Returns ARMA params (mu, phi, theta), residuals, and volatility forecasts.
+    """
+    # Keep one aligned, non-null series for both ARMA and GARCH stages.
+    spread_clean = spread.dropna().astype(float)
+    if len(spread_clean) < 40:
+        raise ValueError("Spread series must have at least 40 non-null observations")
+
+    try:
+        from arch import arch_model
+    except ImportError as exc:
+        raise ImportError(
+            "fit_arma_garch requires the 'arch' package. Install dependencies first."
+        ) from exc
+
+    # ARMA(1,1) with constant term for spread mean dynamics.
+    arma = ARIMA(spread_clean, order=(1, 0, 1), trend="c")
+    arma_fit = arma.fit()
+
+    # Map statsmodels coefficients into RAPTS notation (mu, phi, theta).
+    phi = float(arma_fit.arparams[0]) if len(arma_fit.arparams) else 0.0
+    theta = float(arma_fit.maparams[0]) if len(arma_fit.maparams) else 0.0
+    const = float(arma_fit.params.get("const", 0.0))
+    mu = const / (1.0 - phi) if not np.isclose(1.0 - phi, 0.0) else float("nan")
+
+    # ARMA residuals are the shock process input to GARCH.
+    arma_residuals = pd.Series(arma_fit.resid, index=spread_clean.index)
+    spread_forecast_next = float(arma_fit.get_forecast(steps=1).predicted_mean.iloc[0])
+
+    # Fit GARCH(1,1) with Student-t shocks on zero-mean residuals.
+    garch = arch_model(
+        arma_residuals, mean="Zero", vol="GARCH", p=1, q=1, dist="t", rescale=False
+    )
+    garch_fit = garch.fit(disp="off")
+
+    params = garch_fit.params
+    omega = float(params["omega"])
+    alpha = float(params["alpha[1]"])
+    gamma = float(params["beta[1]"])
+    nu = float(params.get("nu", np.nan))
+
+    # sigma_t and one-step-ahead variance forecast.
+    conditional_volatility = pd.Series(
+        garch_fit.conditional_volatility, index=spread_clean.index
+    )
+    variance_forecast_next = float(
+        garch_fit.forecast(horizon=1, reindex=False).variance.iloc[-1, 0]
+    )
+    # Signal score used in your spec: Z_t = (s_t - mu) / sigma_t.
+    vol_scaled_z_score = (spread_clean - mu) / conditional_volatility
+
+    return ArmaGarchResult(
+        mu=mu,
+        phi=phi,
+        theta=theta,
+        arma_residuals=arma_residuals,
+        spread_forecast_next=spread_forecast_next,
+        omega=omega,
+        alpha=alpha,
+        gamma=gamma,
+        nu=nu,
+        conditional_volatility=conditional_volatility,
+        variance_forecast_next=variance_forecast_next,
+        vol_scaled_z_score=vol_scaled_z_score,
+    )
 
 
 def compute_spread(

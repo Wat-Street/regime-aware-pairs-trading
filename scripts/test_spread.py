@@ -14,6 +14,8 @@ from pairs_trading.data.spread import (
     compute_hedge_ratio,
     compute_zscore,
     compute_half_life,
+    test_cointegration,
+    fit_arma_garch,
 )
 
 
@@ -123,6 +125,79 @@ def test_real_data():
     print("✓ PASSED")
 
 
+def test_cointegration_stationary():
+    """Test ADF-based stationarity detection on stationary data."""
+    print("\n=== Test 5: Cointegration/Stationarity (Stationary Series) ===")
+
+    rng = np.random.default_rng(42)
+    n = 600
+    phi = 0.7
+    eps = rng.normal(0, 1, n)
+    spread = np.zeros(n)
+    for t in range(1, n):
+        spread[t] = phi * spread[t - 1] + eps[t]
+
+    result = test_cointegration(pd.Series(spread))
+    print(f"ADF p-value: {result.p_value:.6f}")
+    print(f"Is stationary: {result.is_stationary}")
+
+    assert result.is_stationary
+    assert result.p_value < 0.05
+    print("✓ PASSED")
+
+
+def test_cointegration_non_stationary():
+    """Test ADF-based stationarity detection on non-stationary data."""
+    print("\n=== Test 6: Cointegration/Stationarity (Non-Stationary Series) ===")
+
+    rng = np.random.default_rng(7)
+    n = 600
+    random_walk = np.cumsum(rng.normal(0, 1, n))
+
+    result = test_cointegration(pd.Series(random_walk))
+    print(f"ADF p-value: {result.p_value:.6f}")
+    print(f"Is stationary: {result.is_stationary}")
+
+    assert not result.is_stationary
+    assert result.p_value >= 0.05
+    print("✓ PASSED")
+
+
+def test_arma_garch_fit():
+    """Test ARMA(1,1)+GARCH(1,1)-t fitting pipeline."""
+    print("\n=== Test 7: ARMA+GARCH ===")
+
+    try:
+        import arch # safety check to ensure the arch package is available for this test
+    except ImportError:
+        print("Skipping ARMA+GARCH test: 'arch' package not installed")
+        return
+
+    rng = np.random.default_rng(123)
+    n = 700
+    spread = np.zeros(n)
+    for t in range(1, n):
+        shock_scale = 0.6 + 0.4 * abs(np.sin(t / 25))
+        spread[t] = 0.65 * spread[t - 1] + rng.normal(0, shock_scale)
+
+    spread_series = pd.Series(spread)
+    result = fit_arma_garch(spread_series)
+
+    print(f"mu={result.mu:.4f}, phi={result.phi:.4f}, theta={result.theta:.4f}")
+    print(
+        f"next spread forecast={result.spread_forecast_next:.4f}, "
+        f"next variance forecast={result.variance_forecast_next:.4f}"
+    )
+
+    assert len(result.arma_residuals) == len(spread_series)
+    assert len(result.conditional_volatility) == len(spread_series)
+    assert len(result.vol_scaled_z_score) == len(spread_series)
+    assert np.isfinite(result.spread_forecast_next)
+    assert np.isfinite(result.variance_forecast_next)
+    assert result.variance_forecast_next > 0
+    print("✓ PASSED")
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("SPREAD CALCULATION TESTS")
@@ -132,6 +207,9 @@ if __name__ == "__main__":
     test_zscore()
     test_half_life()
     test_real_data()
+    test_cointegration_stationary()
+    test_cointegration_non_stationary()
+    test_arma_garch_fit()
 
     print("\n" + "=" * 50)
     print("ALL TESTS PASSED ✓")

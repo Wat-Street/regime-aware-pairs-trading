@@ -79,3 +79,37 @@ class SpreadData(BaseModel):
     @property
     def timestamps(self) -> pd.DatetimeIndex:
         return self.spread.index
+
+
+class CointegrationResult(BaseModel):
+    """Result of unit-root testing on the spread."""
+
+    model_config = ConfigDict(frozen=True)
+
+    # ADF output used to decide whether spread is stationary.
+    test_statistic: float
+    p_value: float
+    critical_values: dict[str, float]
+    is_stationary: bool
+    alpha: float = 0.05
+
+
+class ArmaGarchResult(BaseModel):
+    """Combined ARMA(1,1) + GARCH(1,1) fit outputs."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    # ARMA(1,1) mean dynamics + one-step spread forecast.
+    mu: float
+    phi: float
+    theta: float
+    arma_residuals: pd.Series
+    spread_forecast_next: float
+    # GARCH(1,1)-t volatility dynamics + one-step variance forecast.
+    omega: float
+    alpha: float
+    gamma: float
+    nu: float
+    conditional_volatility: pd.Series
+    variance_forecast_next: float
+    vol_scaled_z_score: pd.Series
