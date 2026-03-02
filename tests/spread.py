@@ -8,8 +8,8 @@ import pandas as pd
 from statsmodels.regression.linear_model import OLS
 from statsmodels.tools import add_constant
 
-from .fetcher import fetch_pair_data
-from .schemas import Pair, PriceData, SpreadData
+from ..src.pairs_trading.data.fetcher import fetch_pair_data
+from ..src.pairs_trading.data.schemas import Pair, PriceData, SpreadData
 
 
 def compute_hedge_ratio(price_a: pd.Series, price_b: pd.Series) -> float:

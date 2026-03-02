@@ -9,7 +9,7 @@ from statsmodels.tools import add_constant
 
 from pairs_trading.data.fetcher import fetch_pair_data
 from pairs_trading.data.schemas import Asset, Pair
-from pairs_trading.data.spread import (
+from tests.spread import (
     compute_spread,
     compute_hedge_ratio,
     compute_zscore,
