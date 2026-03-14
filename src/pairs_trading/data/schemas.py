@@ -95,20 +95,27 @@ class CointegrationResult(BaseModel):
 
 
 class ArmaGarchResult(BaseModel):
-    """Combined ARMA(1,1) + GARCH(1,1) fit outputs."""
+    """Combined ARMA/GARCH fit outputs."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    # ARMA(1,1) mean dynamics + one-step spread forecast.
+    # Chosen model specification and fit quality.
+    arma_order: tuple[int, int, int]
+    garch_order: tuple[int, int]
+    arma_aic: float
+    garch_aic: float
+    arma_params: dict[str, float]
+    garch_params: dict[str, float]
+    # ARMA mean dynamics + one-step spread forecast.
     mu: float
     phi: float
     theta: float
     arma_residuals: pd.Series
     spread_forecast_next: float
-    # GARCH(1,1)-t volatility dynamics + one-step variance forecast.
+    # GARCH volatility dynamics + one-step variance forecast.
     omega: float
     alpha: float
-    gamma: float
+    beta: float
     nu: float
     conditional_volatility: pd.Series
     variance_forecast_next: float

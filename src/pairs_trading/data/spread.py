@@ -1,7 +1,7 @@
 """Compute spread, hedge ratio, and z-score for pairs."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Iterable, Optional
 
 import numpy as np
 import pandas as pd
@@ -99,11 +99,31 @@ def test_cointegration(spread: pd.Series, alpha: float = 0.05) -> CointegrationR
     )
 
 
-def fit_arma_garch(spread: pd.Series) -> ArmaGarchResult:
-    """
-    Fit ARMA(1,1) on spread and GARCH(1,1)-t on ARMA residuals.
+def _iter_model_candidates(
+    arma_order: tuple[int, int, int],
+    garch_order: tuple[int, int],
+    arma_candidates: Optional[Iterable[tuple[int, int, int]]] = None,
+    garch_candidates: Optional[Iterable[tuple[int, int]]] = None,
+) -> list[tuple[tuple[int, int, int], tuple[int, int]]]:
+    """Build the ARMA/GARCH candidate grid, preserving caller order."""
+    arma_grid = list(arma_candidates) if arma_candidates is not None else [arma_order]
+    garch_grid = list(garch_candidates) if garch_candidates is not None else [garch_order]
+    return [(arma_cfg, garch_cfg) for arma_cfg in arma_grid for garch_cfg in garch_grid]
 
-    Returns ARMA params (mu, phi, theta), residuals, and volatility forecasts.
+
+def fit_arma_garch(
+    spread: pd.Series,
+    arma_order: tuple[int, int, int] = (1, 0, 1),
+    garch_order: tuple[int, int] = (1, 1),
+    *,
+    arma_candidates: Optional[Iterable[tuple[int, int, int]]] = None,
+    garch_candidates: Optional[Iterable[tuple[int, int]]] = None,
+    distribution: str = "t",
+) -> ArmaGarchResult:
+    """
+    Fit ARMA on spread and GARCH on ARMA residuals.
+
+    Optionally evaluates multiple model orders and returns the lowest-AIC fit.
     """
     # Keep one aligned, non-null series for both ARMA and GARCH stages.
     spread_clean = spread.dropna().astype(float)
@@ -117,43 +137,82 @@ def fit_arma_garch(spread: pd.Series) -> ArmaGarchResult:
             "fit_arma_garch requires the 'arch' package. Install dependencies first."
         ) from exc
 
-    # ARMA(1,1) with constant term for spread mean dynamics.
-    arma = ARIMA(spread_clean, order=(1, 0, 1), trend="c")
-    arma_fit = arma.fit()
+    best_result = None
+    candidate_errors = []
+
+    for arma_cfg, garch_cfg in _iter_model_candidates(
+        arma_order, garch_order, arma_candidates, garch_candidates
+    ):
+        try:
+            arma = ARIMA(spread_clean, order=arma_cfg, trend="c")
+            arma_fit = arma.fit()
+            arma_residuals = pd.Series(arma_fit.resid, index=spread_clean.index)
+
+            garch = arch_model(
+                arma_residuals,
+                mean="Zero",
+                vol="GARCH",
+                p=garch_cfg[0],
+                q=garch_cfg[1],
+                dist=distribution,
+                rescale=False,
+            )
+            garch_fit = garch.fit(disp="off")
+        except Exception as exc:  # pragma: no cover - best-effort model search
+            candidate_errors.append(f"ARMA{arma_cfg}/GARCH{garch_cfg}: {exc}")
+            continue
+
+        score = (float(arma_fit.aic), float(garch_fit.aic))
+        if best_result is None or score < best_result["score"]:
+            best_result = {
+                "score": score,
+                "arma_order": arma_cfg,
+                "garch_order": garch_cfg,
+                "arma_fit": arma_fit,
+                "garch_fit": garch_fit,
+                "arma_residuals": arma_residuals,
+            }
+
+    if best_result is None:
+        raise ValueError(
+            "Unable to fit any ARMA/GARCH candidate combination. "
+            + "; ".join(candidate_errors)
+        )
+
+    arma_fit = best_result["arma_fit"]
+    garch_fit = best_result["garch_fit"]
+    arma_residuals = best_result["arma_residuals"]
+    selected_arma_order = best_result["arma_order"]
+    selected_garch_order = best_result["garch_order"]
 
     # Map statsmodels coefficients into RAPTS notation (mu, phi, theta).
     phi = float(arma_fit.arparams[0]) if len(arma_fit.arparams) else 0.0
     theta = float(arma_fit.maparams[0]) if len(arma_fit.maparams) else 0.0
     const = float(arma_fit.params.get("const", 0.0))
     mu = const / (1.0 - phi) if not np.isclose(1.0 - phi, 0.0) else float("nan")
-
-    # ARMA residuals are the shock process input to GARCH.
-    arma_residuals = pd.Series(arma_fit.resid, index=spread_clean.index)
     spread_forecast_next = float(arma_fit.get_forecast(steps=1).predicted_mean.iloc[0])
-
-    # Fit GARCH(1,1) with Student-t shocks on zero-mean residuals.
-    garch = arch_model(
-        arma_residuals, mean="Zero", vol="GARCH", p=1, q=1, dist="t", rescale=False
-    )
-    garch_fit = garch.fit(disp="off")
 
     params = garch_fit.params
     omega = float(params["omega"])
     alpha = float(params["alpha[1]"])
-    gamma = float(params["beta[1]"])
+    beta = float(params[[idx for idx in params.index if idx.startswith("beta[")][0]])
     nu = float(params.get("nu", np.nan))
 
-    # sigma_t and one-step-ahead variance forecast.
     conditional_volatility = pd.Series(
         garch_fit.conditional_volatility, index=spread_clean.index
     )
     variance_forecast_next = float(
         garch_fit.forecast(horizon=1, reindex=False).variance.iloc[-1, 0]
     )
-    # Signal score used in your spec: Z_t = (s_t - mu) / sigma_t.
     vol_scaled_z_score = (spread_clean - mu) / conditional_volatility
 
     return ArmaGarchResult(
+        arma_order=selected_arma_order,
+        garch_order=selected_garch_order,
+        arma_aic=float(arma_fit.aic),
+        garch_aic=float(garch_fit.aic),
+        arma_params={str(k): float(v) for k, v in arma_fit.params.items()},
+        garch_params={str(k): float(v) for k, v in garch_fit.params.items()},
         mu=mu,
         phi=phi,
         theta=theta,
@@ -161,7 +220,7 @@ def fit_arma_garch(spread: pd.Series) -> ArmaGarchResult:
         spread_forecast_next=spread_forecast_next,
         omega=omega,
         alpha=alpha,
-        gamma=gamma,
+        beta=beta,
         nu=nu,
         conditional_volatility=conditional_volatility,
         variance_forecast_next=variance_forecast_next,
