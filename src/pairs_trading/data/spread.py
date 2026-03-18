@@ -10,8 +10,8 @@ from statsmodels.tools import add_constant
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.stattools import adfuller
 
-from ..src.pairs_trading.data.fetcher import fetch_pair_data
-from ..src.pairs_trading.data.schemas import (
+from pairs_trading.data.fetcher import fetch_pair_data
+from pairs_trading.data.schemas import (
     ArmaGarchResult,
     CointegrationResult,
     Pair,
@@ -81,7 +81,7 @@ def compute_zscore(spread: pd.Series, lookback: int = 20) -> pd.Series:
     return z_score
 
 
-def test_cointegration(spread: pd.Series, alpha: float = 0.05) -> CointegrationResult:
+def check_cointegration(spread: pd.Series, alpha: float = 0.05) -> CointegrationResult:
     """
     Test spread stationarity via ADF unit-root test.
 

@@ -13,7 +13,7 @@ from pairs_trading.data.spread import (
     compute_spread,
     compute_zscore,
     fit_arma_garch,
-    test_cointegration,
+    check_cointegration,
 )
 
 
@@ -99,7 +99,7 @@ def test_cointegration_stationary():
     for t in range(1, n):
         spread[t] = phi * spread[t - 1] + eps[t]
 
-    result = test_cointegration(pd.Series(spread))
+    result = check_cointegration(pd.Series(spread))
 
     assert result.is_stationary
     assert result.p_value < 0.05
@@ -109,7 +109,7 @@ def test_cointegration_non_stationary():
     rng = np.random.default_rng(7)
     random_walk = np.cumsum(rng.normal(0, 1, 600))
 
-    result = test_cointegration(pd.Series(random_walk))
+    result = check_cointegration(pd.Series(random_walk))
 
     assert not result.is_stationary
     assert result.p_value >= 0.05
