@@ -10,8 +10,8 @@ from statsmodels.tools import add_constant
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.stattools import adfuller
 
-from .fetcher import fetch_pair_data
-from .schemas import ArmaGarchResult, CointegrationResult, Pair, PriceData, SpreadData
+from ..src.pairs_trading.data.fetcher import fetch_pair_data
+from ..src.pairs_trading.data.schemas import ArmaGarchResult, CointegrationResult, Pair, PriceData, SpreadData
 
 
 def compute_hedge_ratio(price_a: pd.Series, price_b: pd.Series) -> float:
