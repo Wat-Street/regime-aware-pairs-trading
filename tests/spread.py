@@ -11,7 +11,13 @@ from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.stattools import adfuller
 
 from ..src.pairs_trading.data.fetcher import fetch_pair_data
-from ..src.pairs_trading.data.schemas import ArmaGarchResult, CointegrationResult, Pair, PriceData, SpreadData
+from ..src.pairs_trading.data.schemas import (
+    ArmaGarchResult,
+    CointegrationResult,
+    Pair,
+    PriceData,
+    SpreadData,
+)
 
 
 def compute_hedge_ratio(price_a: pd.Series, price_b: pd.Series) -> float:
@@ -107,7 +113,9 @@ def _iter_model_candidates(
 ) -> list[tuple[tuple[int, int, int], tuple[int, int]]]:
     """Build the ARMA/GARCH candidate grid, preserving caller order."""
     arma_grid = list(arma_candidates) if arma_candidates is not None else [arma_order]
-    garch_grid = list(garch_candidates) if garch_candidates is not None else [garch_order]
+    garch_grid = (
+        list(garch_candidates) if garch_candidates is not None else [garch_order]
+    )
     return [(arma_cfg, garch_cfg) for arma_cfg in arma_grid for garch_cfg in garch_grid]
 
 
