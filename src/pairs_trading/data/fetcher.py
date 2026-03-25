@@ -70,17 +70,21 @@ def fetch_pair_data(
     data_b = fetch_price_data(asset_b, start_date, end_date, source)
 
     # Align to common dates (inner join)
-    common_idx = data_a.df.index.intersection(data_b.df.index)
+    common_idx = data_a.df.index.intersection(data_b.df.index).sort_values()
+    if len(common_idx) == 0:
+        raise ValueError(
+            f"No overlapping timestamps found for {asset_a.symbol} and {asset_b.symbol}"
+        )
 
     aligned_a = PriceData(
         df=data_a.df.loc[common_idx],
         symbol=asset_a.symbol,
-        source=source,
+        source=data_a.source,
     )
     aligned_b = PriceData(
         df=data_b.df.loc[common_idx],
         symbol=asset_b.symbol,
-        source=source,
+        source=data_b.source,
     )
 
     return aligned_a, aligned_b
