@@ -5,44 +5,60 @@ import importlib.util
 import numpy as np
 import pandas as pd
 import pytest
+from statsmodels.regression.linear_model import OLS
+from statsmodels.tools import add_constant
 
 from pairs_trading.data.schemas import Asset, Pair, PriceData
 from pairs_trading.data.spread import (
+    check_cointegration,
     compute_half_life,
     compute_hedge_ratio,
     compute_spread,
     compute_zscore,
     fit_arma_garch,
-    check_cointegration,
 )
 
 
-def _make_price_data(symbol: str, close: np.ndarray) -> PriceData:
-    index = pd.date_range("2023-01-01", periods=len(close), freq="D")
+def _make_price_data(
+    symbol: str,
+    close: np.ndarray,
+    *,
+    index: pd.DatetimeIndex | None = None,
+) -> PriceData:
+    if index is None:
+        index = pd.date_range("2023-01-01", periods=len(close), freq="D")
+
+    close_array = np.asarray(close, dtype=float)
     df = pd.DataFrame(
         {
-            "open": close,
-            "high": close + 0.5,
-            "low": close - 0.5,
-            "close": close,
-            "volume": np.full(len(close), 1_000),
+            "open": close_array,
+            "high": close_array + 0.5,
+            "low": close_array - 0.5,
+            "close": close_array,
+            "volume": np.full(len(close_array), 1_000),
         },
         index=index,
     )
     return PriceData(df=df, symbol=symbol)
 
 
-def test_hedge_ratio():
-    np.random.seed(42)
-    n = 100
+def test_hedge_ratio_aligns_on_shared_timestamps():
+    rng = np.random.default_rng(42)
+    n = 120
     true_hedge_ratio = 1.5
-    true_alpha = 10
+    true_intercept = 10.0
 
-    price_b = np.cumsum(np.random.randn(n)) + 100
-    noise = np.random.randn(n) * 2
-    price_a = true_alpha + true_hedge_ratio * price_b + noise
+    full_index = pd.date_range("2023-01-01", periods=n, freq="D")
+    price_b = pd.Series(np.cumsum(rng.normal(size=n)) + 100, index=full_index)
+    overlap_index = full_index[7:]
+    price_a = pd.Series(
+        true_intercept
+        + true_hedge_ratio * price_b.loc[overlap_index].to_numpy()
+        + rng.normal(scale=1.5, size=len(overlap_index)),
+        index=overlap_index,
+    )
 
-    calculated_ratio = compute_hedge_ratio(pd.Series(price_a), pd.Series(price_b))
+    calculated_ratio = compute_hedge_ratio(price_a, price_b)
 
     assert abs(true_hedge_ratio - calculated_ratio) < 0.1
 
@@ -57,14 +73,19 @@ def test_zscore():
     assert abs(manual_z - z_score.iloc[6]) < 1e-4
 
 
+def test_zscore_rejects_invalid_lookback():
+    with pytest.raises(ValueError, match="lookback"):
+        compute_zscore(pd.Series([1.0, 2.0, 3.0]), lookback=1)
+
+
 def test_half_life():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 500
     theta = 0.1
 
     spread_mr = [0.0]
     for _ in range(1, n):
-        spread_mr.append(spread_mr[-1] - theta * spread_mr[-1] + np.random.randn())
+        spread_mr.append(spread_mr[-1] - theta * spread_mr[-1] + rng.normal())
 
     half_life = compute_half_life(pd.Series(spread_mr))
     theoretical_hl = -np.log(2) / np.log(1 - theta)
@@ -72,46 +93,99 @@ def test_half_life():
     assert abs(theoretical_hl - half_life) < 3
 
 
-def test_compute_spread_with_prefetched_price_data():
+def test_half_life_returns_inf_for_invalid_domain():
+    alternating_spread = pd.Series([1.0, -1.0] * 80)
+    assert compute_half_life(alternating_spread) == np.inf
+
+
+def test_compute_spread_with_prefetched_price_data_uses_residuals_and_cointegration():
     rng = np.random.default_rng(21)
-    n = 90
+    n = 150
+    index = pd.date_range("2023-01-01", periods=n, freq="D")
     price_b = 100 + np.cumsum(rng.normal(0, 1, n))
-    price_a = 8 + 1.25 * price_b + rng.normal(0, 0.8, n)
+    price_a = 8 + 1.25 * price_b + rng.normal(0, 0.5, n)
 
     pair = Pair(asset_a=Asset(symbol="MSFT"), asset_b=Asset(symbol="AAPL"))
-    data_a = _make_price_data("MSFT", price_a)
-    data_b = _make_price_data("AAPL", price_b)
+    data_a = _make_price_data("MSFT", price_a, index=index)
+    data_b = _make_price_data("AAPL", price_b[10:], index=index[10:])
 
     spread_data = compute_spread(pair, data_a, data_b, zscore_lookback=20)
 
+    expected_a = pd.Series(price_a[10:], index=index[10:], name="price_a")
+    expected_b = pd.Series(price_b[10:], index=index[10:], name="price_b")
+    regression = OLS(expected_a, add_constant(expected_b)).fit()
+    expected_intercept = float(regression.params["const"])
+    expected_beta = float(regression.params["price_b"])
+    expected_spread = expected_a - (expected_intercept + expected_beta * expected_b)
+
     assert spread_data.pair == pair
-    assert len(spread_data.spread) == n
+    assert len(spread_data.spread) == n - 10
+    assert spread_data.spread.index.equals(index[10:])
+    assert np.isclose(spread_data.intercept, expected_intercept)
+    assert np.isclose(spread_data.hedge_ratio, expected_beta)
+    assert np.allclose(spread_data.spread.to_numpy(), expected_spread.to_numpy())
+    assert spread_data.cointegration.is_cointegrated
+    assert spread_data.cointegration.method == "engle_granger"
+    assert spread_data.half_life is not None
     assert spread_data.z_score.isna().sum() >= 19
-    assert np.isfinite(spread_data.hedge_ratio)
 
 
-def test_cointegration_stationary():
+def test_compute_spread_non_cointegrated_pair_returns_none_half_life():
+    rng = np.random.default_rng(7)
+    n = 700
+    index = pd.date_range("2023-01-01", periods=n, freq="D")
+    price_a = np.cumsum(rng.normal(0.1, 1.0, n))
+    price_b = np.cumsum(rng.normal(-0.05, 1.2, n))
+
+    pair = Pair(asset_a=Asset(symbol="MSFT"), asset_b=Asset(symbol="AAPL"))
+    data_a = _make_price_data("MSFT", price_a, index=index)
+    data_b = _make_price_data("AAPL", price_b, index=index)
+
+    spread_data = compute_spread(pair, data_a, data_b, zscore_lookback=20)
+
+    assert not spread_data.cointegration.is_cointegrated
+    assert spread_data.half_life is None
+
+
+def test_compute_spread_rejects_symbol_mismatch():
+    index = pd.date_range("2023-01-01", periods=40, freq="D")
+    pair = Pair(asset_a=Asset(symbol="MSFT"), asset_b=Asset(symbol="AAPL"))
+    data_a = _make_price_data("GOOG", np.arange(40), index=index)
+    data_b = _make_price_data("AAPL", np.arange(40), index=index)
+
+    with pytest.raises(ValueError, match="asset_a"):
+        compute_spread(pair, data_a, data_b)
+
+
+def test_cointegration_detects_pair_level_relationship():
     rng = np.random.default_rng(42)
     n = 600
-    phi = 0.7
-    eps = rng.normal(0, 1, n)
-    spread = np.zeros(n)
+    base = np.cumsum(rng.normal(0, 1, n))
+    price_b = pd.Series(base, index=pd.date_range("2022-01-01", periods=n, freq="D"))
+    stationary_noise = np.zeros(n)
     for t in range(1, n):
-        spread[t] = phi * spread[t - 1] + eps[t]
+        stationary_noise[t] = 0.6 * stationary_noise[t - 1] + rng.normal(0, 0.5)
+    price_a = pd.Series(
+        4.0 + 1.8 * base + stationary_noise,
+        index=price_b.index,
+    )
 
-    result = check_cointegration(pd.Series(spread))
+    result = check_cointegration(price_a, price_b)
 
-    assert result.is_stationary
+    assert result.is_cointegrated
     assert result.p_value < 0.05
 
 
-def test_cointegration_non_stationary():
+def test_cointegration_rejects_independent_random_walks():
     rng = np.random.default_rng(7)
-    random_walk = np.cumsum(rng.normal(0, 1, 600))
+    n = 700
+    index = pd.date_range("2022-01-01", periods=n, freq="D")
+    price_a = pd.Series(np.cumsum(rng.normal(0.1, 1.0, n)), index=index)
+    price_b = pd.Series(np.cumsum(rng.normal(-0.05, 1.2, n)), index=index)
 
-    result = check_cointegration(pd.Series(random_walk))
+    result = check_cointegration(price_a, price_b)
 
-    assert not result.is_stationary
+    assert not result.is_cointegrated
     assert result.p_value >= 0.05
 
 
