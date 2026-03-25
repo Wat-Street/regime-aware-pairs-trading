@@ -8,7 +8,7 @@ import pandas as pd
 from statsmodels.regression.linear_model import OLS
 from statsmodels.tools import add_constant
 from statsmodels.tsa.arima.model import ARIMA
-from statsmodels.tsa.stattools import adfuller
+from statsmodels.tsa.stattools import coint
 
 from pairs_trading.data.fetcher import fetch_pair_data
 from pairs_trading.data.schemas import (
@@ -20,6 +20,95 @@ from pairs_trading.data.schemas import (
 )
 
 
+def _align_price_series(
+    price_a: pd.Series,
+    price_b: pd.Series,
+    *,
+    min_observations: int,
+    context: str,
+) -> tuple[pd.Series, pd.Series]:
+    """Align two price series on their shared non-null timestamps."""
+    aligned = pd.concat(
+        [
+            price_a.rename("price_a").astype(float),
+            price_b.rename("price_b").astype(float),
+        ],
+        axis=1,
+        join="inner",
+    ).dropna()
+    aligned = aligned.sort_index()
+
+    if len(aligned) < min_observations:
+        raise ValueError(
+            f"{context} requires at least {min_observations} overlapping observations"
+        )
+
+    return aligned["price_a"], aligned["price_b"]
+
+
+def _fit_spread_regression(
+    price_a: pd.Series,
+    price_b: pd.Series,
+    *,
+    min_observations: int = 2,
+) -> tuple[pd.Series, pd.Series, float, float, pd.Series]:
+    """Fit OLS with intercept and return aligned series plus residual spread."""
+    aligned_a, aligned_b = _align_price_series(
+        price_a,
+        price_b,
+        min_observations=min_observations,
+        context="Spread regression",
+    )
+    model = OLS(aligned_a, add_constant(aligned_b)).fit()
+    intercept = float(model.params["const"])
+    hedge_ratio = float(model.params["price_b"])
+    spread = aligned_a - (intercept + hedge_ratio * aligned_b)
+    return aligned_a, aligned_b, intercept, hedge_ratio, spread
+
+
+def _cointegration_from_aligned_prices(
+    price_a: pd.Series,
+    price_b: pd.Series,
+    *,
+    alpha: float,
+    trend: str,
+) -> CointegrationResult:
+    """Run Engle-Granger cointegration on already aligned price series."""
+    test_statistic, p_value, critical_values = coint(
+        price_a,
+        price_b,
+        trend=trend,
+        autolag="aic",
+    )
+    critical_value_labels = ("1%", "5%", "10%")
+
+    return CointegrationResult(
+        test_statistic=float(test_statistic),
+        p_value=float(p_value),
+        critical_values={
+            label: float(value)
+            for label, value in zip(critical_value_labels, critical_values, strict=True)
+        },
+        is_cointegrated=bool(p_value < alpha),
+        alpha=alpha,
+        trend=trend,
+    )
+
+
+def _validate_pair_inputs(pair: Pair, data_a: PriceData, data_b: PriceData) -> None:
+    """Validate that provided data belongs to the requested pair."""
+    if data_a.symbol != pair.asset_a.symbol:
+        raise ValueError(
+            f"PriceData symbol mismatch for asset_a: expected {pair.asset_a.symbol}, "
+            f"got {data_a.symbol}"
+        )
+    if data_b.symbol != pair.asset_b.symbol:
+        raise ValueError(
+            f"PriceData symbol mismatch for asset_b: expected {pair.asset_b.symbol}, "
+            f"got {data_b.symbol}"
+        )
+
+
 def compute_hedge_ratio(price_a: pd.Series, price_b: pd.Series) -> float:
     """
     Compute hedge ratio using OLS regression.
@@ -28,13 +117,8 @@ def compute_hedge_ratio(price_a: pd.Series, price_b: pd.Series) -> float:
 
     Returns beta (the hedge ratio).
     """
-    y = price_a.values
-    X = add_constant(price_b.values)
-
-    model = OLS(y, X).fit()
-
-    # beta is the second coefficient (first is intercept)
-    return model.params[1]
+    _, _, _, hedge_ratio, _ = _fit_spread_regression(price_a, price_b)
+    return hedge_ratio
 
 
 def compute_half_life(spread: pd.Series) -> float:
@@ -46,26 +130,27 @@ def compute_half_life(spread: pd.Series) -> float:
 
     Returns half-life in number of periods (days).
     """
-    spread_lag = spread.shift(1).dropna()
-    spread_diff = spread.diff().dropna()
+    spread_clean = spread.dropna().astype(float)
+    if len(spread_clean) < 3:
+        raise ValueError("Spread series must have at least 3 non-null observations")
 
-    # Align series
-    spread_lag = spread_lag.iloc[1:]
-    spread_diff = spread_diff.iloc[1:]
+    regression_frame = pd.DataFrame(
+        {
+            "spread_diff": spread_clean.diff(),
+            "spread_lag": spread_clean.shift(1),
+        }
+    ).dropna()
 
-    # Regress diff on lag
-    X = add_constant(spread_lag.values)
-    y = spread_diff.values
+    model = OLS(
+        regression_frame["spread_diff"],
+        add_constant(regression_frame["spread_lag"]),
+    ).fit()
+    rho = float(model.params["spread_lag"])
 
-    model = OLS(y, X).fit()
-    rho = model.params[1]
+    if not np.isfinite(rho) or rho >= 0 or rho <= -1:
+        return np.inf
 
-    # Avoid log of non-positive number
-    if rho >= 0:
-        return np.inf  # Not mean reverting
-
-    half_life = -np.log(2) / np.log(1 + rho)
-    return half_life
+    return float(-np.log(2) / np.log1p(rho))
 
 
 def compute_zscore(spread: pd.Series, lookback: int = 20) -> pd.Series:
@@ -74,6 +159,9 @@ def compute_zscore(spread: pd.Series, lookback: int = 20) -> pd.Series:
 
     z = (spread - rolling_mean) / rolling_std
     """
+    if lookback < 2:
+        raise ValueError("lookback must be at least 2")
+
     mean = spread.rolling(window=lookback).mean()
     std = spread.rolling(window=lookback).std()
 
@@ -81,27 +169,29 @@ def compute_zscore(spread: pd.Series, lookback: int = 20) -> pd.Series:
     return z_score
 
 
-def check_cointegration(spread: pd.Series, alpha: float = 0.05) -> CointegrationResult:
+def check_cointegration(
+    price_a: pd.Series,
+    price_b: pd.Series,
+    *,
+    alpha: float = 0.05,
+    trend: str = "c",
+) -> CointegrationResult:
     """
-    Test spread stationarity via ADF unit-root test.
+    Test pair cointegration via the Engle-Granger procedure.
 
-    If p-value < alpha, treat spread as stationary (cointegration-compatible).
+    If p-value < alpha, treat the pair as cointegrated.
     """
-    # Work on a clean numeric series so statsmodels receives valid input.
-    spread_clean = spread.dropna().astype(float)
-    if len(spread_clean) < 20:
-        raise ValueError("Spread series must have at least 20 non-null observations")
-
-    # ADF null hypothesis: unit root (non-stationary spread).
-    test_statistic, p_value, _, _, critical_values, _ = adfuller(
-        spread_clean, autolag="AIC"
+    aligned_a, aligned_b = _align_price_series(
+        price_a,
+        price_b,
+        min_observations=20,
+        context="Cointegration test",
     )
-    return CointegrationResult(
-        test_statistic=float(test_statistic),
-        p_value=float(p_value),
-        critical_values={k: float(v) for k, v in critical_values.items()},
-        is_stationary=bool(p_value < alpha),
+    return _cointegration_from_aligned_prices(
+        aligned_a,
+        aligned_b,
         alpha=alpha,
+        trend=trend,
     )
 
 
@@ -244,6 +334,8 @@ def compute_spread(
     end_date: Optional[datetime] = None,
     source: str = "yfinance",
     zscore_lookback: int = 20,
+    cointegration_alpha: float = 0.05,
+    cointegration_trend: str = "c",
 ) -> SpreadData:
     """
     Compute spread data for a pair.
@@ -265,9 +357,12 @@ def compute_spread(
         end_date: End date for auto-fetch
         source: Data provider for auto-fetch
         zscore_lookback: Rolling window for z-score calculation
+        cointegration_alpha: Significance level for Engle-Granger test
+        cointegration_trend: Deterministic trend used in the cointegration test
 
     Returns:
-        SpreadData with spread, z-score, hedge ratio, half-life
+        SpreadData with residual spread, z-score, hedge ratio, intercept,
+        cointegration result, and half-life
     """
     # Auto-fetch if data not provided
     if data_a is None or data_b is None:
@@ -278,26 +373,30 @@ def compute_spread(
         data_a, data_b = fetch_pair_data(
             pair.asset_a, pair.asset_b, start_date, end_date, source
         )
+    else:
+        _validate_pair_inputs(pair, data_a, data_b)
 
-    price_a = data_a.close
-    price_b = data_b.close
+    aligned_a, aligned_b, intercept, hedge_ratio, spread = _fit_spread_regression(
+        data_a.close,
+        data_b.close,
+        min_observations=20,
+    )
+    cointegration = _cointegration_from_aligned_prices(
+        aligned_a,
+        aligned_b,
+        alpha=cointegration_alpha,
+        trend=cointegration_trend,
+    )
 
-    # Compute hedge ratio: A = alpha + beta * B
-    hedge_ratio = compute_hedge_ratio(price_a, price_b)
-
-    # Compute spread: A - beta * B
-    spread = price_a - hedge_ratio * price_b
-
-    # Compute z-score
     z_score = compute_zscore(spread, lookback=zscore_lookback)
-
-    # Compute half-life
-    half_life = compute_half_life(spread)
+    half_life = compute_half_life(spread) if cointegration.is_cointegrated else None
 
     return SpreadData(
         pair=pair,
         spread=spread,
         z_score=z_score,
+        intercept=intercept,
         hedge_ratio=hedge_ratio,
+        cointegration=cointegration,
         half_life=half_life,
     )
