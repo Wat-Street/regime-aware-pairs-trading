@@ -58,6 +58,10 @@ class PriceData(BaseModel):
             raise ValueError(f"DataFrame must have columns: {required}")
         if not isinstance(v.index, pd.DatetimeIndex):
             raise ValueError("DataFrame index must be DatetimeIndex")
+        if not v.index.is_monotonic_increasing:
+            raise ValueError("DataFrame index must be sorted in ascending order")
+        if not v.index.is_unique:
+            raise ValueError("DataFrame index must be unique")
         return v
 
     @property
@@ -66,16 +70,60 @@ class PriceData(BaseModel):
 
 
 class SpreadData(BaseModel):
-    """Computed spread between a pair."""
+    """Computed residual spread between a pair."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     pair: Pair
     spread: pd.Series
     z_score: pd.Series
+    intercept: float
     hedge_ratio: float
+    cointegration: "CointegrationResult"
     half_life: Optional[float] = None
 
     @property
     def timestamps(self) -> pd.DatetimeIndex:
         return self.spread.index
+
+
+class CointegrationResult(BaseModel):
+    """Result of pair-level cointegration testing."""
+
+    model_config = ConfigDict(frozen=True)
+
+    test_statistic: float
+    p_value: float
+    critical_values: dict[str, float]
+    is_cointegrated: bool
+    alpha: float = 0.05
+    method: str = "engle_granger"
+    trend: str = "c"
+
+
+class ArmaGarchResult(BaseModel):
+    """Combined ARMA/GARCH fit outputs."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    # Chosen model specification and fit quality.
+    arma_order: tuple[int, int, int]
+    garch_order: tuple[int, int]
+    arma_aic: float
+    garch_aic: float
+    arma_params: dict[str, float]
+    garch_params: dict[str, float]
+    # ARMA mean dynamics + one-step spread forecast.
+    mu: float
+    phi: float
+    theta: float
+    arma_residuals: pd.Series
+    spread_forecast_next: float
+    # GARCH volatility dynamics + one-step variance forecast.
+    omega: float
+    alpha: float
+    beta: float
+    nu: float
+    conditional_volatility: pd.Series
+    variance_forecast_next: float
+    vol_scaled_z_score: pd.Series
