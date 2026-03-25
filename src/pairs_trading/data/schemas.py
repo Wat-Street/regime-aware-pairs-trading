@@ -58,6 +58,10 @@ class PriceData(BaseModel):
             raise ValueError(f"DataFrame must have columns: {required}")
         if not isinstance(v.index, pd.DatetimeIndex):
             raise ValueError("DataFrame index must be DatetimeIndex")
+        if not v.index.is_monotonic_increasing:
+            raise ValueError("DataFrame index must be sorted in ascending order")
+        if not v.index.is_unique:
+            raise ValueError("DataFrame index must be unique")
         return v
 
     @property
@@ -66,14 +70,16 @@ class PriceData(BaseModel):
 
 
 class SpreadData(BaseModel):
-    """Computed spread between a pair."""
+    """Computed residual spread between a pair."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     pair: Pair
     spread: pd.Series
     z_score: pd.Series
+    intercept: float
     hedge_ratio: float
+    cointegration: "CointegrationResult"
     half_life: Optional[float] = None
 
     @property
@@ -82,16 +88,17 @@ class SpreadData(BaseModel):
 
 
 class CointegrationResult(BaseModel):
-    """Result of unit-root testing on the spread."""
+    """Result of pair-level cointegration testing."""
 
     model_config = ConfigDict(frozen=True)
 
-    # ADF output used to decide whether spread is stationary.
     test_statistic: float
     p_value: float
     critical_values: dict[str, float]
-    is_stationary: bool
+    is_cointegrated: bool
     alpha: float = 0.05
+    method: str = "engle_granger"
+    trend: str = "c"
 
 
 class ArmaGarchResult(BaseModel):
