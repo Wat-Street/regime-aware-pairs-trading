@@ -44,7 +44,7 @@ The system operates on a hybrid pipeline combining classical econometrics with m
 
 ```bash
 # Clone the repository
-git clone [https://github.com/yourusername/deep-gated-pairs-trading.git](https://github.com/yourusername/deep-gated-pairs-trading.git)
+git clone [https://github.com/yourusername/deep-gated-pairs-trading.git](https://github.com/Wat-Street/regime-aware-pairs-trading.git)
 
 # Install dependencies
 pip install -r requirements.txt
