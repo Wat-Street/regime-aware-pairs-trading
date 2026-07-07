@@ -169,6 +169,93 @@ def compute_zscore(spread: pd.Series, lookback: int = 20) -> pd.Series:
     return z_score
 
 
+def reversion_speed_from_half_life(half_life: float) -> float:
+    """
+    Continuous-time mean-reversion speed from a half-life in trading days.
+
+        kappa = ln(2) / half_life      (units: 1/trading-day)
+
+    Consistency: half-life is THE canonical reversion estimate in this file
+    (compute_half_life, AR(1) OLS), so every reversion-speed number in the
+    project derives from that one estimator rather than a second parallel
+    fit. The convention is equivalent to kappa = -ln(phi) for a daily AR(1)
+    coefficient phi, since half_life = -ln(2)/ln(phi).
+
+    Returns nan for non-positive or non-finite half-life (including the inf
+    that compute_half_life returns when the spread shows no mean reversion) —
+    no valid reversion means no meaningful speed.
+    """
+    if not np.isfinite(half_life) or half_life <= 0:
+        return float("nan")
+    return float(np.log(2.0) / half_life)
+
+
+def compute_z_magnitude(z_score: pd.Series) -> pd.Series:
+    """
+    Distance from equilibrium in z units.
+
+    Reversion outcomes are symmetric in the sign of the spread (a +2z entry
+    is the same trade as a -2z entry, mirrored), so |z| carries the tradeable
+    information. Feeding signed z forces a model to learn every pattern twice
+    with half the data each.
+    """
+    return z_score.abs()
+
+
+def compute_reversion_velocity(z_score: pd.Series, periods: int = 5) -> pd.Series:
+    """
+    Signed speed of convergence toward equilibrium, in z units per `periods` days.
+
+    velocity_t = -sign(z_t) * (z_t - z_{t-periods})
+
+    Positive = the spread moved TOWARD the mean over the window (reversion
+    already underway); negative = still diverging. Orienting by -sign(z)
+    makes momentum comparable across long and short entries, unlike a raw
+    spread difference.
+    """
+    if periods < 1:
+        raise ValueError("periods must be at least 1")
+    return -np.sign(z_score) * z_score.diff(periods)
+
+
+def compute_volatility_ratio(
+    conditional_volatility: pd.Series, window: int = 60, min_periods: int = 20
+) -> pd.Series:
+    """
+    Volatility burst indicator: sigma_t relative to its own trailing mean.
+
+    ratio_t = sigma_t / mean(sigma over trailing `window` days)
+
+    ratio > 1 = volatility elevated versus the pair's recent norm — the
+    signature of a regime break. Unitless, so comparable across pairs,
+    unlike the raw GARCH sigma level.
+    """
+    baseline = conditional_volatility.rolling(window, min_periods=min_periods).mean()
+    return conditional_volatility / baseline
+
+
+def compute_variance_ratio(
+    spread: pd.Series, k: int = 5, window: int = 60, min_periods: int = 40
+) -> pd.Series:
+    """
+    Rolling Lo-MacKinlay variance ratio VR(k) of the spread.
+
+    VR(k)_t = Var(k-day spread change) / (k * Var(1-day spread change)),
+    both variances over a trailing `window`.
+
+    VR < 1 = anti-persistent (mean reversion currently operative);
+    VR ~ 1 = random walk; VR > 1 = trending/drifting. A direct, unitless
+    read on whether the mean-reversion premise holds right now.
+    """
+    if k < 2:
+        raise ValueError("k must be at least 2")
+    ret_1 = spread.diff()
+    ret_k = spread.diff(k)
+    var_1 = ret_1.rolling(window, min_periods=min_periods).var()
+    var_k = ret_k.rolling(window, min_periods=min_periods).var()
+    return var_k / (k * var_1)
+
+
 def check_cointegration(
     price_a: pd.Series,
     price_b: pd.Series,
