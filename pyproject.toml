@@ -28,6 +28,11 @@ dev = [
     "ruff>=0.14.14",
 ]
 
+[project.optional-dependencies]
+ml = [
+    "torch>=2.5.0",
+]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

@@ -1,0 +1,78 @@
+{
+  "selected_params": {
+    "dropout": 0.1,
+    "moving_avg": 15,
+    "top_k": 2
+  },
+  "selection_rule": "max validation MCC, tie-break validation specificity",
+  "forward_window": 8,
+  "input_length": 60,
+  "fixed_model_size": {
+    "d_model": 32,
+    "n_heads": 4,
+    "num_layers": 2,
+    "dim_feedforward": 64
+  },
+  "trials": [
+    {
+      "params": {
+        "dropout": 0.1,
+        "moving_avg": 15,
+        "top_k": 2
+      },
+      "seed": 0,
+      "best_validation_loss": 0.42535775899887085,
+      "validation_mcc": 0.549010813046013,
+      "validation_specificity": 0.8214285714285714,
+      "validation_epochs": 25
+    },
+    {
+      "params": {
+        "dropout": 0.1,
+        "moving_avg": 25,
+        "top_k": 3
+      },
+      "seed": 0,
+      "best_validation_loss": 0.40266674757003784,
+      "validation_mcc": 0.37796447300922725,
+      "validation_specificity": 0.8571428571428571,
+      "validation_epochs": 25
+    },
+    {
+      "params": {
+        "dropout": 0.2,
+        "moving_avg": 25,
+        "top_k": 3
+      },
+      "seed": 0,
+      "best_validation_loss": 0.4033021330833435,
+      "validation_mcc": 0.25197631533948484,
+      "validation_specificity": 0.8214285714285714,
+      "validation_epochs": 25
+    },
+    {
+      "params": {
+        "dropout": 0.3,
+        "moving_avg": 15,
+        "top_k": 2
+      },
+      "seed": 0,
+      "best_validation_loss": 0.39020106196403503,
+      "validation_mcc": 0.43463356032809364,
+      "validation_specificity": 0.7857142857142857,
+      "validation_epochs": 30
+    },
+    {
+      "params": {
+        "dropout": 0.3,
+        "moving_avg": 25,
+        "top_k": 3
+      },
+      "seed": 0,
+      "best_validation_loss": 0.4276847839355469,
+      "validation_mcc": 0.46770717334674267,
+      "validation_specificity": 0.75,
+      "validation_epochs": 23
+    }
+  ]
+}
