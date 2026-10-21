@@ -1,0 +1,7 @@
+{
+  "tier": "banks",
+  "description": "Regional bank pair candidates. Run on --start 2015-01-01 --end 2024-12-31 to match screen window.",
+  "pairs": [
+    ["MA", "V"]
+  ]
+}

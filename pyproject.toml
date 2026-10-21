@@ -17,6 +17,8 @@ dependencies = [
     "scipy>=1.17.0",
     "statsmodels>=0.14.6",
     "yfinance>=1.1.0",
+    "torch>=2.0.0",
+    "scikit-optimize>=0.9.0",
 ]
 
 [dependency-groups]
@@ -33,3 +35,8 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+# Put src/ on sys.path directly so tests run even when the venv's editable
+# install gets clobbered (recurring issue on this machine — iCloud/Desktop).
+pythonpath = ["src"]

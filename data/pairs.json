@@ -1,0 +1,16 @@
+{
+  "tier": "B",
+  "description": "Pair list B — 21 liquid, sector-matched candidate pairs. Edit this file to change the training universe; train_B.py reads it via --pairs-file (this is the default).",
+  "pairs": [
+    ["MA", "V"],
+    ["COF", "SYF"],
+    ["COF", "ALLY"],
+    ["SYF", "ALLY"],
+    ["AXP", "V"],
+    ["AXP", "MA"],
+    ["AXP", "COF"],
+    ["PYPL", "AFRM"],
+    ["PYPL", "SOFI"],
+    ["AFRM", "SOFI"]
+  ]
+}
