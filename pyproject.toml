@@ -19,6 +19,11 @@ dependencies = [
     "yfinance>=1.1.0",
 ]
 
+[project.optional-dependencies]
+ml = [
+    "torch>=2.5.0",
+]
+
 [dependency-groups]
 dev = [
     "ipykernel>=7.1.0",
