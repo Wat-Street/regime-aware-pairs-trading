@@ -1,0 +1,62 @@
+# Regime-gate benchmark — full run on real data.
+#   uv run python -m pairs_trading.benchmark --config configs/benchmark.toml
+# Every model sees the same pairs, features, labels, splits, training loop and trade rule.
+# Change things HERE, not in model files, so runs stay comparable.
+
+name = "benchmark"
+models = ["logistic", "tft", "autoformer", "wtransformer"]   # see pairs_trading.gate.available_models()
+seeds = [0, 1, 2]
+output_dir = "results"
+
+[data]
+source = "yfinance"            # "yfinance" (cached to data/cache/) | "csv" | "synthetic"
+pairs_file = "data/pairs.json" # or set: pairs = [["KO", "PEP"], ["MA", "V"]]
+start = "2015-01-01"
+end = "2024-12-31"
+formation_end = "2017-12-31"   # hedge ratio + ARMA/GARCH estimated on <= this date only
+# max_coint_pvalue = 0.10      # uncomment to drop pairs not cointegrated in formation
+
+# One rule for labels AND backtest
+[rules]
+entry_z = 1.5
+target_z = 0.5
+stop_z = 3.0
+horizon = 8                    # H, trading days (time stop and label lookahead)
+zscore_lookback = 20
+
+[gate]
+input_length = 60
+epochs = 60
+batch_size = 64
+learning_rate = 1e-3
+weight_decay = 1e-5
+early_stopping_patience = 10
+balance_classes = true
+threshold = 0.5
+device = "cpu"                 # "cuda" / "mps" if available
+
+# Per-model architecture overrides (anything the model's constructor accepts)
+[gate.model_kwargs.tft]
+d_model = 64
+n_heads = 2
+dropout = 0.58
+
+[gate.model_kwargs.autoformer]
+d_model = 32
+n_heads = 4
+num_layers = 2
+dropout = 0.3
+
+[gate.model_kwargs.wtransformer]
+d_model = 16
+num_heads = 4
+num_encoder_layers = 1
+
+[walk_forward]
+n_folds = 4
+val_fraction = 0.15
+min_train_signals = 200
+
+[backtest]
+capital_per_pair = 10000.0
+cost_bps = 5.0

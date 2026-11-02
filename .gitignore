@@ -197,3 +197,6 @@ cython_debug/
 # dbt
 dbt_packages/
 logs/
+# Benchmark outputs / cached downloads
+results/
+data/cache/
