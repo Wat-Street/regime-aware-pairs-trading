@@ -126,8 +126,20 @@ def generate_regime_labels(
     entry_threshold: float = DEFAULT_ENTRY_THRESHOLD,
     reversion_target: float = DEFAULT_REVERSION_TARGET,
     stop_loss: float = DEFAULT_STOP_LOSS,
+    fill_no_entry: bool = False,
+    stop_rule: str = "any",
 ) -> pd.Series:
     """Binary regime labels aligned to the spread index.
+
+    ``stop_rule``:
+      "any"         (legacy default) label 0 if |z| touches stop_loss anywhere in
+                    the forward window, even after a successful reversion.
+      "first_touch" path-dependent: whichever of reversion_target / stop_loss is
+                    hit first decides the label. Matches how a trade actually
+                    exits; the benchmark pipeline uses this.
+
+    ``fill_no_entry`` (from the Autoformer branch): label no-signal steps 0
+    instead of -1 to get a dense array.
 
     For each timestep t:
       1. |z_t| >= entry_threshold? If not → -1 (no trade signal; excluded
@@ -149,6 +161,8 @@ def generate_regime_labels(
         raise ValueError("entry_threshold must be positive")
     if stop_loss <= entry_threshold:
         raise ValueError("stop_loss must be greater than entry_threshold")
+    if stop_rule not in ("any", "first_touch"):
+        raise ValueError("stop_rule must be 'any' or 'first_touch'")
 
     z = spread_data.z_score.dropna().astype(float)
     values = z.to_numpy()
@@ -160,9 +174,15 @@ def generate_regime_labels(
 
         # Step 1: entry signal check
         if abs(z_t) < entry_threshold:
+            if fill_no_entry:
+                labels[t] = 0
             continue
 
         forward = values[t + 1 : t + 1 + forward_window]
+
+        if stop_rule == "first_touch":
+            labels[t] = _first_touch_label(z_t, forward, reversion_target, stop_loss)
+            continue
 
         # Step 2: stop loss check
         if np.any(np.abs(forward) >= stop_loss):
@@ -175,7 +195,98 @@ def generate_regime_labels(
         else:
             labels[t] = 1 if np.any(forward >= -reversion_target) else 0
 
+    if fill_no_entry:
+        labels[max(n - forward_window, 0) :] = 0
+
     return pd.Series(labels, index=z.index, name="regime_label", dtype=np.int8)
+
+
+def _first_touch_label(
+    z_t: float, forward: np.ndarray, reversion_target: float, stop_loss: float
+) -> int:
+    """1 if the reversion target is reached before the stop, else 0."""
+    hit_target = forward <= reversion_target if z_t > 0 else forward >= -reversion_target
+    hit_stop = np.abs(forward) >= stop_loss
+    t_target = int(np.argmax(hit_target)) if hit_target.any() else len(forward)
+    t_stop = int(np.argmax(hit_stop)) if hit_stop.any() else len(forward)
+    return 1 if t_target < t_stop else 0
+
+
+def generate_simple_reversion_labels(
+    spread_data: SpreadData,
+    *,
+    forward_window: int,
+    reversion_target: float = DEFAULT_REVERSION_TARGET,
+) -> pd.Series:
+    """Unconditional reversion labels for every timestep (sanity checks).
+
+    Ported from the Autoformer / W-Transformer branches.
+    """
+    if forward_window < 1:
+        raise ValueError("forward_window must be at least 1")
+
+    z = spread_data.z_score.dropna().astype(float)
+    values = z.to_numpy()
+    n = len(values)
+    labels = np.zeros(n, dtype=np.int8)
+
+    for t in range(n - forward_window):
+        forward = values[t + 1 : t + 1 + forward_window]
+        if values[t] > 0:
+            labels[t] = 1 if np.any(forward <= reversion_target) else 0
+        else:
+            labels[t] = 1 if np.any(forward >= -reversion_target) else 0
+
+    return pd.Series(labels, index=z.index, name="regime_label", dtype=np.int8)
+
+
+def sweep_forward_window(
+    spread_data: SpreadData,
+    *,
+    candidates: tuple = (3, 5, 8, 10, 13, 16, 20, 25, 30, 36, 45),
+    entry_threshold: float = 1.5,
+    reversion_target: float = DEFAULT_REVERSION_TARGET,
+    stop_loss: float = DEFAULT_STOP_LOSS,
+    target_balance: float = 0.5,
+) -> pd.DataFrame:
+    """Sweep H candidates and report label balance for each (Autoformer branch).
+
+    NOTE: for benchmarking, H must be fixed and shared across models and pairs
+    (see LabelConfig). Use this only for exploration.
+    """
+    rows = []
+    for h in candidates:
+        labels = generate_regime_labels(
+            spread_data,
+            forward_window=h,
+            entry_threshold=entry_threshold,
+            reversion_target=reversion_target,
+            stop_loss=stop_loss,
+        )
+        n_fav = int((labels == 1).sum())
+        n_unfav = int((labels == 0).sum())
+        total = n_fav + n_unfav
+        balance = n_fav / total if total else float("nan")
+        rows.append(
+            {
+                "H": h,
+                "n_favorable": n_fav,
+                "n_unfavorable": n_unfav,
+                "n_labeled": total,
+                "balance": balance,
+                "distance_to_target": abs(balance - target_balance)
+                if total
+                else float("inf"),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def recommend_forward_window(spread_data: SpreadData, **sweep_kwargs) -> tuple:
+    """Convenience wrapper: returns (recommended_H, sweep_dataframe)."""
+    df = sweep_forward_window(spread_data, **sweep_kwargs)
+    best = df.loc[df["distance_to_target"].idxmin()]
+    return int(best["H"]), df
 
 
 # ---------------------------------------------------------------------------
