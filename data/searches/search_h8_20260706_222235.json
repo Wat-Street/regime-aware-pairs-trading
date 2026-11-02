@@ -1,0 +1,63 @@
+{
+  "created_at": "2026-07-06T22:22:35",
+  "selection_metric": "validation MCC, mean across search seeds, measured at the restored best-val-loss checkpoint",
+  "n_trials_completed": 1,
+  "metadata": {
+    "force_h": 8,
+    "features": [
+      "z_magnitude",
+      "reversion_velocity",
+      "half_life",
+      "vol_ratio",
+      "variance_ratio"
+    ],
+    "start": "2015-01-01",
+    "end": "2024-12-31",
+    "n_pairs": 1,
+    "entry_threshold": 1.2,
+    "coint_alpha": 0.1,
+    "n_trials": 1,
+    "search_seed": 0,
+    "seeds_per_trial": 2,
+    "val_fraction": 0.15,
+    "test_fraction": 0.15
+  },
+  "top_configs": [
+    {
+      "rank": 1,
+      "val_mcc_mean": 0.17091520057858245,
+      "val_mcc_std": 0.06553085069675837,
+      "hparams": {
+        "input_length": 60,
+        "d_model": 64,
+        "n_heads": 4,
+        "use_static_enrichment": false,
+        "dropout": 0.6083510432704753,
+        "batch_size": 128,
+        "learning_rate": 0.00058716940013259,
+        "weight_decay": 1.5493103643906705e-05,
+        "max_grad_norm": 0.01,
+        "lstm_layers": 1
+      }
+    }
+  ],
+  "all_trials": [
+    {
+      "rank": 1,
+      "val_mcc_mean": 0.17091520057858245,
+      "val_mcc_std": 0.06553085069675837,
+      "hparams": {
+        "input_length": 60,
+        "d_model": 64,
+        "n_heads": 4,
+        "use_static_enrichment": false,
+        "dropout": 0.6083510432704753,
+        "batch_size": 128,
+        "learning_rate": 0.00058716940013259,
+        "weight_decay": 1.5493103643906705e-05,
+        "max_grad_norm": 0.01,
+        "lstm_layers": 1
+      }
+    }
+  ]
+}
