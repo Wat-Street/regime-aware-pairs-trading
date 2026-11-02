@@ -67,6 +67,7 @@ def main() -> None:
     )
 
     import torch
+
     if torch.cuda.is_available():
         device = "cuda"
     elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
@@ -95,8 +96,11 @@ def main() -> None:
 
     _banner(f"Step 2 — Build forecast windows (horizon={HORIZON} days)")
     dataset = make_autoformer_forecast_dataset(
-        spread_data, arma_result,
-        input_length=INPUT_LENGTH, horizon=HORIZON, target=TARGET_FEATURE,
+        spread_data,
+        arma_result,
+        input_length=INPUT_LENGTH,
+        horizon=HORIZON,
+        target=TARGET_FEATURE,
     )
     print(f"  Features      : {dataset.feature_names}")
     print(f"  Target        : {TARGET_FEATURE!r} (column {dataset.target_index})")
@@ -124,10 +128,16 @@ def main() -> None:
 
     t0 = time.perf_counter()
     history = train_autoformer_forecaster(
-        model, dataset,
-        val_fraction=VAL_FRACTION, test_fraction=TEST_FRACTION,
-        epochs=EPOCHS, batch_size=BATCH_SIZE, learning_rate=LEARNING_RATE,
-        early_stopping_patience=EARLY_STOPPING, device=device, seed=SEED,
+        model,
+        dataset,
+        val_fraction=VAL_FRACTION,
+        test_fraction=TEST_FRACTION,
+        epochs=EPOCHS,
+        batch_size=BATCH_SIZE,
+        learning_rate=LEARNING_RATE,
+        early_stopping_patience=EARLY_STOPPING,
+        device=device,
+        seed=SEED,
     )
     print(f"  Training time : {time.perf_counter() - t0:.1f}s")
     n_tr, n_v, n_te = history.split_sizes
@@ -138,10 +148,14 @@ def main() -> None:
     print(f"  Naive ('repeat last value') test MSE : {history.naive_test_mse:.4f}")
     print(f"  Forecaster test MAE : {history.test_mae:.4f}")
     beats_naive = history.test_mse < history.naive_test_mse
-    print(f"\n  Forecaster beats naive baseline on MSE: {'YES' if beats_naive else 'NO'}")
+    print(
+        f"\n  Forecaster beats naive baseline on MSE: {'YES' if beats_naive else 'NO'}"
+    )
     if not beats_naive:
         print("  -> A legitimate finding to report as-is, same as the classifier demo:")
-        print("     a forecaster only earns its complexity if it beats this trivial bar.")
+        print(
+            "     a forecaster only earns its complexity if it beats this trivial bar."
+        )
 
     _banner("Step 5 — Save model + live forecast")
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -149,10 +163,15 @@ def main() -> None:
     print(f"  Saved: {MODEL_PATH}")
 
     latest_window = make_latest_autoformer_forecast_window(
-        spread_data, arma_result,
-        input_length=INPUT_LENGTH, horizon=HORIZON, target=TARGET_FEATURE,
+        spread_data,
+        arma_result,
+        input_length=INPUT_LENGTH,
+        horizon=HORIZON,
+        target=TARGET_FEATURE,
     )
-    forecast = predict_spread_forecast(model, latest_window, history.scaling, device=device)[0]
+    forecast = predict_spread_forecast(
+        model, latest_window, history.scaling, device=device
+    )[0]
     last_known = float(spread_data.spread.dropna().iloc[-1])
 
     print(f"\n  Last known {TARGET_FEATURE} : {last_known:.4f}")

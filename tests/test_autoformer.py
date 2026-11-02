@@ -24,7 +24,9 @@ def test_series_decomposition_shapes():
 
 
 def test_autoformer_classifier_forward_shape():
-    model = AutoformerRegimeClassifier(input_length=60, num_features=7, d_model=32, n_heads=4)
+    model = AutoformerRegimeClassifier(
+        input_length=60, num_features=7, d_model=32, n_heads=4
+    )
     x = torch.randn(8, 60, 7)
     logits = model(x)
     assert logits.shape == (8,)
@@ -46,7 +48,9 @@ def test_exit_diagnostics_are_finite():
     z = (spread - spread.rolling(20).mean()) / spread.rolling(20).std()
     data = SimpleNamespace(spread=spread, z_score=z.fillna(0.0))
 
-    d = compute_exit_diagnostics_from_spread(data, input_length=60, moving_avg=25, regime_score=0.7)
+    d = compute_exit_diagnostics_from_spread(
+        data, input_length=60, moving_avg=25, regime_score=0.7
+    )
     assert 0.0 <= d.seasonal_ratio <= 1.0
     assert 0.0 <= d.trend_ratio <= 1.0
     assert np.isfinite(d.trend_slope)
@@ -62,7 +66,11 @@ def test_purged_split_uses_real_positions_not_row_index():
     embargo = 25
 
     train_idx, val_idx, test_idx = purged_chronological_split(
-        n, positions, embargo, val_fraction=0.2, test_fraction=0.2,
+        n,
+        positions,
+        embargo,
+        val_fraction=0.2,
+        test_fraction=0.2,
     )
 
     test_start_pos = positions[int(n * 0.8)]
@@ -76,7 +84,11 @@ def test_purged_split_uses_real_positions_not_row_index():
 
 def test_purged_split_falls_back_to_row_index_when_positions_omitted():
     train_idx, val_idx, test_idx = purged_chronological_split(
-        100, positions=None, embargo=5, val_fraction=0.15, test_fraction=0.15,
+        100,
+        positions=None,
+        embargo=5,
+        val_fraction=0.15,
+        test_fraction=0.15,
     )
     assert len(train_idx) > 0 and len(val_idx) > 0 and len(test_idx) > 0
     assert train_idx.max() < val_idx.min()

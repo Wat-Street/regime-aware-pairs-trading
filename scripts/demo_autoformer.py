@@ -77,6 +77,7 @@ def main() -> None:
     )
 
     import torch
+
     if torch.cuda.is_available():
         device = "cuda"
     elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
@@ -98,7 +99,9 @@ def main() -> None:
 
     print(f"  Pair         : {spread_data.pair.pair_id}")
     print(f"  Observations : {len(spread_data.spread)}")
-    print(f"  Date range   : {spread_data.spread.index[0].date()} -> {spread_data.spread.index[-1].date()}")
+    print(
+        f"  Date range   : {spread_data.spread.index[0].date()} -> {spread_data.spread.index[-1].date()}"
+    )
     if spread_data.half_life:
         print(f"  Half-life    : {spread_data.half_life:.1f} days")
 
@@ -112,7 +115,9 @@ def main() -> None:
     )
     for _, row in sweep.iterrows():
         marker = "  <-- chosen" if int(row["H"]) == forward_window else ""
-        print(f"  H={int(row['H']):>3}  labeled={int(row['n_labeled']):>4}  balance={row['balance']:.1%}{marker}")
+        print(
+            f"  H={int(row['H']):>3}  labeled={int(row['n_labeled']):>4}  balance={row['balance']:.1%}{marker}"
+        )
 
     embargo = INPUT_LENGTH + forward_window
     print(f"\n  Chosen H : {forward_window}")
@@ -139,6 +144,7 @@ def main() -> None:
     labels_labeled = labels_array[mask]
 
     from dataclasses import replace
+
     train_data = replace(dataset, x=x_labeled)
 
     n_fav = int(labels_labeled.sum())
@@ -157,7 +163,9 @@ def main() -> None:
         test_fraction=TEST_FRACTION,
     )
     for name, m in baselines.items():
-        print(f"  {name:<10} F1={m['f1']:.3f}  spec={m['specificity']:.3f}  MCC={m['mcc']:.3f}  balAcc={m['balanced_accuracy']:.3f}")
+        print(
+            f"  {name:<10} F1={m['f1']:.3f}  spec={m['specificity']:.3f}  MCC={m['mcc']:.3f}  balAcc={m['balanced_accuracy']:.3f}"
+        )
 
     _banner("Step 5 — Select Autoformer hyperparameters")
 
@@ -192,8 +200,7 @@ def main() -> None:
         )
 
     _banner(
-        f"Step 6 — Multi-seed Autoformer training "
-        f"({len(SEEDS)} seeds, device={device})"
+        f"Step 6 — Multi-seed Autoformer training ({len(SEEDS)} seeds, device={device})"
     )
 
     def make_model():
@@ -201,10 +208,7 @@ def main() -> None:
 
     n_params = sum(p.numel() for p in make_model().parameters())
     print(f"  Params per model : {n_params:,}")
-    print(
-        "  Moving-average decomposition kernel : "
-        f"{selected_params['moving_avg']}"
-    )
+    print(f"  Moving-average decomposition kernel : {selected_params['moving_avg']}")
     print(f"  Top-k autocorrelation delays         : {selected_params['top_k']}")
     print(f"  Dropout                              : {selected_params['dropout']}")
 
@@ -232,15 +236,28 @@ def main() -> None:
     _banner("Step 7 — Test metrics, mean +/- std across seeds")
     print(f"  {'metric':<20} {'Autoformer':<22} {'all_ones':<10} {'logistic'}")
     print(f"  {'-' * 62}")
-    for k in ["specificity", "mcc", "balanced_accuracy", "npv", "precision", "recall", "f1"]:
+    for k in [
+        "specificity",
+        "mcc",
+        "balanced_accuracy",
+        "npv",
+        "precision",
+        "recall",
+        "f1",
+    ]:
         a = aggregate[k]
-        print(f"  {k:<20} {a['mean']:.3f} +/- {a['std']:.3f}        {baselines['all_ones'][k]:<10.3f} {baselines['logistic'][k]:.3f}")
+        print(
+            f"  {k:<20} {a['mean']:.3f} +/- {a['std']:.3f}        {baselines['all_ones'][k]:<10.3f} {baselines['logistic'][k]:.3f}"
+        )
 
     beats_logistic = aggregate["mcc"]["mean"] > baselines["logistic"]["mcc"]
-    print(f"\n  Autoformer beats logistic baseline on MCC: {'YES' if beats_logistic else 'NO'}")
+    print(
+        f"\n  Autoformer beats logistic baseline on MCC: {'YES' if beats_logistic else 'NO'}"
+    )
 
     _banner("Step 8 — Save model + live regime score")
     import torch as _t
+
     last_model = make_model()
     h_last = train_autoformer_classifier(
         last_model,
@@ -270,7 +287,11 @@ def main() -> None:
     )
     score = float(predict_regime_score(last_model, latest, device=device)[0])
     latest_z = float(spread_data.z_score.dropna().iloc[-1])
-    gate = "FAVORABLE -- trade signals permitted" if score >= REGIME_THRESHOLD else "UNFAVORABLE -- regime gate closed"
+    gate = (
+        "FAVORABLE -- trade signals permitted"
+        if score >= REGIME_THRESHOLD
+        else "UNFAVORABLE -- regime gate closed"
+    )
 
     diagnostics = compute_exit_diagnostics_from_spread(
         spread_data,
@@ -326,6 +347,7 @@ def save_real_data(
 
 if __name__ == "__main__":
     import sys
+
     if "--save-data" in sys.argv:
         save_real_data()
     else:

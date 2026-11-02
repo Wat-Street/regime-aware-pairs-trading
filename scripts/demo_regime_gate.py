@@ -22,24 +22,24 @@ import numpy as np
 DATA_PATH = Path("data/demo_spread.pkl")
 
 # ── model hyperparameters kept small for fast demo ──────────────────────────
-INPUT_LENGTH      = 40    # days of history per window
-FORECAST_HORIZON  = 1     # predict 1 day ahead
-EPOCHS            = 20    # enough to see loss drop, finishes in ~30s on CPU
-BATCH_SIZE        = 16
-LEARNING_RATE     = 1e-3
-VALIDATION_SPLIT  = 0.15
-D_MODEL           = 16    # transformer hidden size
-NUM_HEADS         = 4
+INPUT_LENGTH = 40  # days of history per window
+FORECAST_HORIZON = 1  # predict 1 day ahead
+EPOCHS = 20  # enough to see loss drop, finishes in ~30s on CPU
+BATCH_SIZE = 16
+LEARNING_RATE = 1e-3
+VALIDATION_SPLIT = 0.15
+D_MODEL = 16  # transformer hidden size
+NUM_HEADS = 4
 NUM_ENCODER_LAYERS = 2
-DIM_FEEDFORWARD   = 32
-FUSION_DIM        = 32
+DIM_FEEDFORWARD = 32
+FUSION_DIM = 32
 
 # ── label hyperparameters ────────────────────────────────────────────────────
-FORWARD_WINDOW    = 5     # days to look ahead for reversion
-ENTRY_THRESHOLD   = 1.5   # z-score threshold for a trade signal
-REVERSION_TARGET  = 0.5   # z-score level that counts as "reverted"
-STOP_LOSS         = 3.0   # z-score level that counts as "blown out"
-REGIME_THRESHOLD  = 0.5   # classifier score threshold for "favorable regime"
+FORWARD_WINDOW = 5  # days to look ahead for reversion
+ENTRY_THRESHOLD = 1.5  # z-score threshold for a trade signal
+REVERSION_TARGET = 0.5  # z-score level that counts as "reverted"
+STOP_LOSS = 3.0  # z-score level that counts as "blown out"
+REGIME_THRESHOLD = 0.5  # classifier score threshold for "favorable regime"
 
 
 def _banner(text: str) -> None:
@@ -68,15 +68,17 @@ def main() -> None:
 
     try:
         import torch
+
         device = (
-            "cuda" if torch.cuda.is_available()
-            else "mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available()
+            "cuda"
+            if torch.cuda.is_available()
+            else "mps"
+            if getattr(torch.backends, "mps", None)
+            and torch.backends.mps.is_available()
             else "cpu"
         )
     except ImportError:
-        raise ImportError(
-            "PyTorch not found. Install with: uv sync --extra ml --dev"
-        )
+        raise ImportError("PyTorch not found. Install with: uv sync --extra ml --dev")
 
     print(f"  torch device : {device}")
 
@@ -92,14 +94,16 @@ def main() -> None:
     else:
         with open(DATA_PATH, "rb") as f:
             payload = pickle.load(f)
-        spread_data  = payload["spread_data"]
-        arma_result  = payload["arma_result"]
+        spread_data = payload["spread_data"]
+        arma_result = payload["arma_result"]
         print(f"  Loaded from   : {DATA_PATH}")
 
     print(f"  Pair          : {spread_data.pair.pair_id}")
     print(f"  Observations  : {len(spread_data.spread)}")
-    print(f"  Date range    : {spread_data.spread.index[0].date()} → "
-          f"{spread_data.spread.index[-1].date()}")
+    print(
+        f"  Date range    : {spread_data.spread.index[0].date()} → "
+        f"{spread_data.spread.index[-1].date()}"
+    )
 
     # ── 2. wavelet decomposition + windowed dataset ───────────────────────────
     _banner("Step 2 — Wavelet decomposition + windowed dataset")
@@ -114,11 +118,12 @@ def main() -> None:
         standardize=True,
     )
     print(f"  Features      : {dataset.feature_names}")
-    print(f"  Components    : {len(dataset.component_names)}  "
-          f"({len(dataset.feature_names)} features × wavelet bands)")
+    print(
+        f"  Components    : {len(dataset.component_names)}  "
+        f"({len(dataset.feature_names)} features × wavelet bands)"
+    )
     print(f"  Windows (N)   : {dataset.n_samples}")
-    print(f"  x shape       : {dataset.x.shape}   "
-          f"(N, input_length, total_components)")
+    print(f"  x shape       : {dataset.x.shape}   (N, input_length, total_components)")
     print(f"  Built in      : {time.perf_counter() - t0:.2f}s")
 
     # ── 3. generate regime labels ─────────────────────────────────────────────
@@ -135,17 +140,19 @@ def main() -> None:
 
     labels_array, mask = align_labels_to_dataset(raw_labels, dataset.target_index)
 
-    n_favorable  = int((labels_array[mask] == 1).sum())
+    n_favorable = int((labels_array[mask] == 1).sum())
     n_unfavorable = int((labels_array[mask] == 0).sum())
-    n_no_signal  = int((~mask).sum())
+    n_no_signal = int((~mask).sum())
 
     print(f"  Favorable (1) : {n_favorable}  windows")
     print(f"  Unfavorable (0): {n_unfavorable}  windows")
     print(f"  No signal (-1): {n_no_signal}  windows (excluded from training)")
-    print(f"  Label balance : {n_favorable / max(n_favorable + n_unfavorable, 1):.1%} positive")
+    print(
+        f"  Label balance : {n_favorable / max(n_favorable + n_unfavorable, 1):.1%} positive"
+    )
 
     # Filter dataset to only labeled windows
-    x_train      = dataset.x[mask]
+    x_train = dataset.x[mask]
     labels_train = labels_array[mask]
 
     if len(x_train) < 10:
@@ -182,6 +189,7 @@ def main() -> None:
 
     # Monkey-patch x into a compatible WaveletWindowData for the trainer
     from dataclasses import replace
+
     train_data = replace(dataset, x=x_train)
 
     t0 = time.perf_counter()
@@ -214,21 +222,28 @@ def main() -> None:
     )
 
     scores = predict_regime_score(classifier, latest_window, device=device)
-    score  = float(scores[0])
-    gate   = "✅  FAVORABLE — trade signals permitted" if score >= REGIME_THRESHOLD \
-             else "🚫  UNFAVORABLE — regime gate closed"
+    score = float(scores[0])
+    gate = (
+        "✅  FAVORABLE — trade signals permitted"
+        if score >= REGIME_THRESHOLD
+        else "🚫  UNFAVORABLE — regime gate closed"
+    )
 
     print(f"\n  Regime score  : {score:.3f}  (threshold = {REGIME_THRESHOLD})")
     print(f"  Gate decision : {gate}")
     print(f"\n  Latest z-score : {float(spread_data.z_score.iloc[-1]):.3f}")
-    print(f"  Half-life      : {spread_data.half_life:.1f} days"
-          if spread_data.half_life else "  Half-life      : N/A")
+    print(
+        f"  Half-life      : {spread_data.half_life:.1f} days"
+        if spread_data.half_life
+        else "  Half-life      : N/A"
+    )
 
     _banner("Demo complete")
     print()
 
 
 # ── synthetic data helper (fallback when no pkl exists) ─────────────────────
+
 
 def _make_synthetic_data():
     """
@@ -237,12 +252,16 @@ def _make_synthetic_data():
     """
     import pandas as pd
     from pairs_trading.data.schemas import (
-        ArmaGarchResult, Asset, CointegrationResult, Pair, SpreadData,
+        ArmaGarchResult,
+        Asset,
+        CointegrationResult,
+        Pair,
+        SpreadData,
     )
 
-    rng   = np.random.default_rng(42)
+    rng = np.random.default_rng(42)
     dates = pd.date_range("2020-01-01", periods=500, freq="B")
-    n     = len(dates)
+    n = len(dates)
 
     # Simulate mean-reverting spread with two shock periods
     spread = np.zeros(n)
@@ -250,14 +269,14 @@ def _make_synthetic_data():
         shock = 2.0 if 150 < t < 180 or 350 < t < 370 else 0.0
         spread[t] = 0.92 * spread[t - 1] + rng.normal(0, 0.3) + shock
 
-    spread_s  = pd.Series(spread, index=dates, name="spread")
+    spread_s = pd.Series(spread, index=dates, name="spread")
     roll_mean = spread_s.rolling(20).mean().fillna(0)
-    roll_std  = spread_s.rolling(20).std().fillna(1).clip(lower=1e-6)
-    z_score   = (spread_s - roll_mean) / roll_std
+    roll_std = spread_s.rolling(20).std().fillna(1).clip(lower=1e-6)
+    z_score = (spread_s - roll_mean) / roll_std
 
-    resid     = pd.Series(rng.normal(0, 0.15, n), index=dates)
-    cond_vol  = pd.Series(np.abs(spread) * 0.1 + 0.05, index=dates)
-    vol_z     = spread_s / cond_vol.clip(lower=1e-6)
+    resid = pd.Series(rng.normal(0, 0.15, n), index=dates)
+    cond_vol = pd.Series(np.abs(spread) * 0.1 + 0.05, index=dates)
+    vol_z = spread_s / cond_vol.clip(lower=1e-6)
 
     pair = Pair(
         asset_a=Asset(symbol="AAA"),
@@ -307,6 +326,7 @@ def _make_synthetic_data():
 
 # ── data-saving helper ───────────────────────────────────────────────────────
 
+
 def save_real_data(
     symbol_a: str = "GLD",
     symbol_b: str = "SLV",
@@ -329,10 +349,12 @@ def save_real_data(
     asset_b = Asset(symbol=symbol_b)
 
     start_dt = datetime.strptime(start, "%Y-%m-%d")
-    end_dt   = datetime.strptime(end,   "%Y-%m-%d")
+    end_dt = datetime.strptime(end, "%Y-%m-%d")
 
     print(f"Fetching {symbol_a}/{symbol_b} from {start} to {end}...")
-    data_a, data_b = fetch_pair_data(asset_a, asset_b, start_date=start_dt, end_date=end_dt)
+    data_a, data_b = fetch_pair_data(
+        asset_a, asset_b, start_date=start_dt, end_date=end_dt
+    )
 
     print("Computing spread...")
     spread_data = compute_spread(data_a, data_b)
@@ -349,6 +371,7 @@ def save_real_data(
 
 if __name__ == "__main__":
     import sys
+
     if "--save-data" in sys.argv:
         save_real_data()
     else:

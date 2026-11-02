@@ -44,7 +44,9 @@ try:
     from torch import nn
     from torch.utils.data import DataLoader, TensorDataset
 except ImportError as exc:  # pragma: no cover
-    raise ImportError("PyTorch is required for pairs_trading.models.autoformer_forecaster") from exc
+    raise ImportError(
+        "PyTorch is required for pairs_trading.models.autoformer_forecaster"
+    ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -90,10 +92,22 @@ def _build_feature_frame(spread_data, arma_result=None):
 
     features = [spread, z, ret_1, momentum_5, vol_20]
 
-    if arma_result is not None and getattr(arma_result, "conditional_volatility", None) is not None:
-        features.append(arma_result.conditional_volatility.astype(float).rename("conditional_volatility"))
-    if arma_result is not None and getattr(arma_result, "vol_scaled_z_score", None) is not None:
-        features.append(arma_result.vol_scaled_z_score.astype(float).rename("vol_scaled_z_score"))
+    if (
+        arma_result is not None
+        and getattr(arma_result, "conditional_volatility", None) is not None
+    ):
+        features.append(
+            arma_result.conditional_volatility.astype(float).rename(
+                "conditional_volatility"
+            )
+        )
+    if (
+        arma_result is not None
+        and getattr(arma_result, "vol_scaled_z_score", None) is not None
+    ):
+        features.append(
+            arma_result.vol_scaled_z_score.astype(float).rename("vol_scaled_z_score")
+        )
 
     df = pd.concat(features, axis=1).replace([np.inf, -np.inf], np.nan).dropna()
     return df, list(df.columns)
@@ -178,7 +192,11 @@ def make_latest_autoformer_forecast_window(
     """Single model-ready window from the latest data, shape
     (1, input_length, num_features), unscaled."""
     dataset = make_autoformer_forecast_dataset(
-        spread_data, arma_result, input_length=input_length, horizon=horizon, target=target,
+        spread_data,
+        arma_result,
+        input_length=input_length,
+        horizon=horizon,
+        target=target,
     )
     return dataset.x[-1:]
 
@@ -227,7 +245,9 @@ class AutoCorrelationBlock(nn.Module):
     pulled toward whatever delays were typical of a training batch).
     """
 
-    def __init__(self, d_model: int, n_heads: int = 4, top_k: int = 3, dropout: float = 0.1) -> None:
+    def __init__(
+        self, d_model: int, n_heads: int = 4, top_k: int = 3, dropout: float = 0.1
+    ) -> None:
         super().__init__()
         if d_model % n_heads != 0:
             raise ValueError("d_model must be divisible by n_heads.")
@@ -243,7 +263,9 @@ class AutoCorrelationBlock(nn.Module):
 
     def _split(self, x: torch.Tensor) -> torch.Tensor:
         b, seq_len, _ = x.shape
-        return x.view(b, seq_len, self.n_heads, self.head_dim).transpose(1, 2)  # B,H,L,C
+        return x.view(b, seq_len, self.n_heads, self.head_dim).transpose(
+            1, 2
+        )  # B,H,L,C
 
     def _resize_kv(self, kv: torch.Tensor, target_len: int) -> torch.Tensor:
         """Match kv's length to the query length via truncation (keep the
@@ -257,7 +279,9 @@ class AutoCorrelationBlock(nn.Module):
         pad = torch.zeros(b, target_len - l_kv, d, device=kv.device, dtype=kv.dtype)
         return torch.cat([pad, kv], dim=1)
 
-    def forward(self, x: torch.Tensor, kv: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, kv: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """Self-attention when ``kv`` is omitted; cross-attention when
         given (queries from ``x``, keys/values from ``kv``, resized to
         ``x``'s length first)."""
@@ -292,12 +316,18 @@ class AutoCorrelationBlock(nn.Module):
             weights = torch.softmax(weights, dim=1)
 
             tiled_v = v.repeat(1, 1, 2, 1)  # (B,H,2L,C)
-            base_index = torch.arange(seq_len, device=v.device).view(1, 1, seq_len, 1).expand(
-                b, self.n_heads, seq_len, self.head_dim
+            base_index = (
+                torch.arange(seq_len, device=v.device)
+                .view(1, 1, seq_len, 1)
+                .expand(b, self.n_heads, seq_len, self.head_dim)
             )
             agg = torch.zeros_like(v)
             for i in range(k_top):
-                delay_i = delays[:, i].view(b, 1, 1, 1).expand(b, self.n_heads, seq_len, self.head_dim)
+                delay_i = (
+                    delays[:, i]
+                    .view(b, 1, 1, 1)
+                    .expand(b, self.n_heads, seq_len, self.head_dim)
+                )
                 gather_index = base_index + delay_i
                 rolled = torch.gather(tiled_v, dim=2, index=gather_index)
                 w_i = weights[:, i].view(b, 1, 1, 1)
@@ -314,7 +344,13 @@ class AutoformerEncoderLayer(nn.Module):
     same whether you're feeding a classifier head or a decoder."""
 
     def __init__(
-        self, d_model: int, n_heads: int, dim_feedforward: int, moving_avg: int, top_k: int, dropout: float,
+        self,
+        d_model: int,
+        n_heads: int,
+        dim_feedforward: int,
+        moving_avg: int,
+        top_k: int,
+        dropout: float,
     ) -> None:
         super().__init__()
         self.decomp1 = SeriesDecomposition(moving_avg)
@@ -349,8 +385,14 @@ class AutoformerDecoderLayer(nn.Module):
     """
 
     def __init__(
-        self, d_model: int, n_heads: int, dim_feedforward: int, moving_avg: int, top_k: int,
-        dropout: float, num_features: int,
+        self,
+        d_model: int,
+        n_heads: int,
+        dim_feedforward: int,
+        moving_avg: int,
+        top_k: int,
+        dropout: float,
+        num_features: int,
     ) -> None:
         super().__init__()
         self.self_attn = AutoCorrelationBlock(d_model, n_heads, top_k, dropout)
@@ -373,7 +415,9 @@ class AutoformerDecoderLayer(nn.Module):
         self.trend_proj2 = nn.Linear(d_model, num_features)
         self.trend_proj3 = nn.Linear(d_model, num_features)
 
-    def forward(self, x: torch.Tensor, encoder_out: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, x: torch.Tensor, encoder_out: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Returns (seasonal_output, trend_delta). ``trend_delta`` is in
         ``num_features`` units, ready to add to a running accumulator."""
         y = self.norm1(x + self.dropout(self.self_attn(x)))
@@ -386,7 +430,9 @@ class AutoformerDecoderLayer(nn.Module):
         seasonal, trend3 = self.decomp3(w)
 
         trend_delta = (
-            self.trend_proj1(trend1) + self.trend_proj2(trend2) + self.trend_proj3(trend3)
+            self.trend_proj1(trend1)
+            + self.trend_proj2(trend2)
+            + self.trend_proj3(trend3)
         )
         return seasonal, trend_delta
 
@@ -435,7 +481,9 @@ class AutoformerForecaster(nn.Module):
         self.enc_pos = nn.Parameter(torch.zeros(1, input_length, d_model))
         self.encoder_layers = nn.ModuleList(
             [
-                AutoformerEncoderLayer(d_model, n_heads, dim_feedforward, moving_avg, top_k, dropout)
+                AutoformerEncoderLayer(
+                    d_model, n_heads, dim_feedforward, moving_avg, top_k, dropout
+                )
                 for _ in range(num_encoder_layers)
             ]
         )
@@ -446,7 +494,13 @@ class AutoformerForecaster(nn.Module):
         self.decoder_layers = nn.ModuleList(
             [
                 AutoformerDecoderLayer(
-                    d_model, n_heads, dim_feedforward, moving_avg, top_k, dropout, num_features
+                    d_model,
+                    n_heads,
+                    dim_feedforward,
+                    moving_avg,
+                    top_k,
+                    dropout,
+                    num_features,
                 )
                 for _ in range(num_decoder_layers)
             ]
@@ -466,7 +520,9 @@ class AutoformerForecaster(nn.Module):
 
         recent_half = x[:, -half:, :]
         seasonal_half, trend_half = self.init_decomp(recent_half)
-        zero_pad = torch.zeros(b, self.horizon, self.num_features, device=x.device, dtype=x.dtype)
+        zero_pad = torch.zeros(
+            b, self.horizon, self.num_features, device=x.device, dtype=x.dtype
+        )
         mean_pad = x.mean(dim=1, keepdim=True).repeat(1, self.horizon, 1)
         seasonal_init = torch.cat([seasonal_half, zero_pad], dim=1)
         trend_acc = torch.cat([trend_half, mean_pad], dim=1)
@@ -478,7 +534,7 @@ class AutoformerForecaster(nn.Module):
 
         seasonal_out = self.seasonal_proj(dec_h)
         forecast_full = seasonal_out + trend_acc
-        return forecast_full[:, -self.horizon:, :]
+        return forecast_full[:, -self.horizon :, :]
 
     def target_series(self, x: torch.Tensor) -> torch.Tensor:
         """Convenience: forecast for just the target feature column,
@@ -550,7 +606,9 @@ def train_autoformer_forecaster(
     criterion = nn.MSELoss()
     model.to(device)
     opt = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    train_loader = DataLoader(TensorDataset(x_train, y_train), batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(
+        TensorDataset(x_train, y_train), batch_size=batch_size, shuffle=True
+    )
 
     train_loss: list = []
     validation_loss: list = []
@@ -581,7 +639,9 @@ def train_autoformer_forecaster(
 
         if v_loss < best_val:
             best_val = v_loss
-            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            best_state = {
+                k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+            }
             patience = 0
         else:
             patience += 1
@@ -603,7 +663,9 @@ def train_autoformer_forecaster(
 
     last_known = data.x[test_idx][:, -1, data.target_index]
     naive_pred = np.repeat(last_known[:, None], data.horizon, axis=1)
-    naive_test_mse = float(np.mean((naive_pred - data.y[test_idx][:, :, data.target_index]) ** 2))
+    naive_test_mse = float(
+        np.mean((naive_pred - data.y[test_idx][:, :, data.target_index]) ** 2)
+    )
 
     return ForecastTrainHistory(
         train_loss=train_loss,
