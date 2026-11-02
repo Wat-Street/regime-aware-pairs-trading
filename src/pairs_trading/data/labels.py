@@ -205,7 +205,9 @@ def _first_touch_label(
     z_t: float, forward: np.ndarray, reversion_target: float, stop_loss: float
 ) -> int:
     """1 if the reversion target is reached before the stop, else 0."""
-    hit_target = forward <= reversion_target if z_t > 0 else forward >= -reversion_target
+    hit_target = (
+        forward <= reversion_target if z_t > 0 else forward >= -reversion_target
+    )
     hit_stop = np.abs(forward) >= stop_loss
     t_target = int(np.argmax(hit_target)) if hit_target.any() else len(forward)
     t_stop = int(np.argmax(hit_stop)) if hit_stop.any() else len(forward)

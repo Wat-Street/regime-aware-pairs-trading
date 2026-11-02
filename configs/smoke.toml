@@ -1,0 +1,43 @@
+# Offline smoke test: synthetic regime-switching pairs, tiny models, one seed.
+# Proves the whole pipeline runs end to end (no network). ~1-2 min on CPU.
+#   uv run python -m pairs_trading.benchmark --config configs/smoke.toml
+
+name = "smoke"
+models = ["logistic", "tft", "autoformer", "wtransformer"]
+seeds = [0]
+output_dir = "results"
+
+[data]
+source = "synthetic"
+synthetic_pairs = 4
+start = "2015-01-01"
+end = "2020-12-31"
+formation_end = "2016-06-30"
+
+[rules]
+entry_z = 1.5
+target_z = 0.5
+stop_z = 3.0
+horizon = 8
+
+[gate]
+input_length = 30
+epochs = 8
+batch_size = 64
+early_stopping_patience = 3
+
+[gate.model_kwargs.tft]
+d_model = 16
+n_heads = 2
+
+[gate.model_kwargs.autoformer]
+d_model = 16
+num_layers = 1
+
+[gate.model_kwargs.wtransformer]
+d_model = 8
+num_heads = 2
+
+[walk_forward]
+n_folds = 3
+min_train_signals = 50

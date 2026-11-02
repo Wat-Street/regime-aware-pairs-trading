@@ -40,6 +40,20 @@ The system operates on a hybrid pipeline combining classical econometrics with m
 | **6** | **Pair Filtering** | ⬜ | *(Optional)* Use clustering to optimize candidate selection for large equity datasets. |
 | **7** | **Reporting** | ⬜ | Final evaluation, visualization of gate activation, and research paper generation. |
 
+## 📊 Benchmarking the regime gates
+
+All gate models (TFT, Autoformer, W-Transformer, logistic baseline) share one interface and
+one benchmark pipeline: same data, features, labels, walk-forward splits, training loop and
+entry/exit rule.
+
+```bash
+uv sync
+uv run python -m pairs_trading.benchmark --config configs/smoke.toml      # offline smoke test
+uv run python -m pairs_trading.benchmark --config configs/benchmark.toml  # real data
+```
+
+See [docs/BENCHMARK.md](docs/BENCHMARK.md) for the model contract and how to add a model.
+
 ## 🛠️ Installation
 
 ```bash
