@@ -19,11 +19,6 @@ dependencies = [
     "yfinance>=1.1.0",
 ]
 
-[project.optional-dependencies]
-ml = [
-    "torch>=2.5.0",
-]
-
 [dependency-groups]
 dev = [
     "ipykernel>=7.1.0",
@@ -31,6 +26,11 @@ dev = [
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "ruff>=0.14.14",
+]
+
+[project.optional-dependencies]
+ml = [
+    "torch>=2.5.0",
 ]
 
 [tool.setuptools]
