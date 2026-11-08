@@ -8,18 +8,18 @@ See scripts/README.md for a full guide to every flag.
 Usage
 -----
     # Standard run: forced horizon H=8, tuned defaults, 2 seeds
-    uv run python scripts/train.py --force-h 8
+    uv run --extra ml python scripts/train.py --force-h 8
 
     # Final run: 5 seeds for stable error bars
-    uv run python scripts/train.py --force-h 8 --seeds 5
+    uv run --extra ml python scripts/train.py --force-h 8 --seeds 5
 
     # Bayesian hyperparameter search (includes the feature lookback)
-    uv run python scripts/train.py --force-h 8 --grid-search
+    uv run --extra ml python scripts/train.py --force-h 8 --grid-search
 
     # Custom universe / dates
-    uv run python scripts/train.py --force-h 8 --pairs-file data/my_pairs.json
-    uv run python scripts/train.py --force-h 8 --pairs V MA JPM BAC
-    uv run python scripts/train.py --force-h 8 --start 2015-01-01 --end 2024-12-31
+    uv run --extra ml python scripts/train.py --force-h 8 --pairs-file data/my_pairs.json
+    uv run --extra ml python scripts/train.py --force-h 8 --pairs V MA JPM BAC
+    uv run --extra ml python scripts/train.py --force-h 8 --start 2015-01-01 --end 2024-12-31
 """
 
 from __future__ import annotations
@@ -841,7 +841,7 @@ def run_training(
         f"  Test MCC (best seed, for reference only) : {best_history.test_metrics['mcc']:.4f}"
     )
     print(
-        f"  Demo:   uv run python scripts/demo_tft.py --gate-only --bundle {bundle_path}"
+        f"  Demo:   uv run --extra ml python scripts/demo_tft.py --gate-only --bundle {bundle_path}"
     )
 
 

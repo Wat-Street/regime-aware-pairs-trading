@@ -12,9 +12,9 @@ Two entry points:
 ## `train.py`
 
 ```bash
-uv run python scripts/train.py --force-h 8                  # standard run
-uv run python scripts/train.py --force-h 8 --seeds 5        # final run (stable error bars)
-uv run python scripts/train.py --force-h 8 --grid-search    # re-tune hyperparameters
+uv run --extra ml python scripts/train.py --force-h 8                  # standard run
+uv run --extra ml python scripts/train.py --force-h 8 --seeds 5        # final run (stable error bars)
+uv run --extra ml python scripts/train.py --force-h 8 --grid-search    # re-tune hyperparameters
 ```
 
 ### `--force-h H` (required)
@@ -159,9 +159,9 @@ Per-trial logging during the hyperparameter search.
 ## `demo_tft.py`
 
 ```bash
-uv run python scripts/demo_tft.py --gate-only                 # V/MA, newest bundle
-uv run python scripts/demo_tft.py --gate-only --pair GLD SLV  # any pair
-uv run python scripts/demo_tft.py --variable-importance
+uv run --extra ml python scripts/demo_tft.py --gate-only                 # V/MA, newest bundle
+uv run --extra ml python scripts/demo_tft.py --gate-only --pair GLD SLV  # any pair
+uv run --extra ml python scripts/demo_tft.py --variable-importance
 ```
 
 ### `--gate-only`

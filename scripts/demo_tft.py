@@ -7,14 +7,14 @@ scripts/train.py. Full flag guide: scripts/README.md.
 Usage
 -----
 Gate signal for V/MA (default pair) on the most recent saved bundle:
-    uv run python scripts/demo_tft.py --gate-only
+    uv run --extra ml python scripts/demo_tft.py --gate-only
 
 Any pair, any bundle:
-    uv run python scripts/demo_tft.py --gate-only --pair GLD SLV
-    uv run python scripts/demo_tft.py --gate-only --bundle data/bundles/<name>.pt
+    uv run --extra ml python scripts/demo_tft.py --gate-only --pair GLD SLV
+    uv run --extra ml python scripts/demo_tft.py --gate-only --bundle data/bundles/<name>.pt
 
 Show VSN variable importance (which features the gate relies on):
-    uv run python scripts/demo_tft.py --variable-importance
+    uv run --extra ml python scripts/demo_tft.py --variable-importance
 
 Integration
 -----------
@@ -245,10 +245,10 @@ def main() -> None:
     if not args.gate_only and not args.variable_importance:
         print(
             "Usage:\n"
-            "  uv run python scripts/demo_tft.py --gate-only                # V/MA on latest bundle\n"
-            "  uv run python scripts/demo_tft.py --gate-only --pair GLD SLV # custom pair\n"
-            "  uv run python scripts/demo_tft.py --variable-importance      # show VSN weights\n"
-            "\nTrain a model first: uv run python scripts/train.py --force-h 8"
+            "  uv run --extra ml python scripts/demo_tft.py --gate-only                # V/MA on latest bundle\n"
+            "  uv run --extra ml python scripts/demo_tft.py --gate-only --pair GLD SLV # custom pair\n"
+            "  uv run --extra ml python scripts/demo_tft.py --variable-importance      # show VSN weights\n"
+            "\nTrain a model first: uv run --extra ml python scripts/train.py --force-h 8"
         )
         return
 
