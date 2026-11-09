@@ -22,7 +22,9 @@ try:
     from torch import nn
     from torch.utils.data import DataLoader, TensorDataset
 except ImportError as exc:  # pragma: no cover
-    raise ImportError("PyTorch is required for pairs_trading.models.autoformer") from exc
+    raise ImportError(
+        "PyTorch is required for pairs_trading.models.autoformer"
+    ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -99,8 +101,6 @@ class TrainHistory:
     scaling: WindowStandardScaler
 
 
-
-
 @dataclass(frozen=True)
 class HyperparameterTrial:
     """One validation-only tuning result.
@@ -116,6 +116,7 @@ class HyperparameterTrial:
     validation_mcc: float
     validation_specificity: float
     validation_epochs: int
+
 
 @dataclass(frozen=True)
 class AutoformerExitDiagnostics:
@@ -189,7 +190,9 @@ class AutoCorrelationBlock(nn.Module):
     rather than always using the cheaper training-mode shortcut.
     """
 
-    def __init__(self, d_model: int, n_heads: int = 4, top_k: int = 3, dropout: float = 0.1) -> None:
+    def __init__(
+        self, d_model: int, n_heads: int = 4, top_k: int = 3, dropout: float = 0.1
+    ) -> None:
         super().__init__()
         if d_model % n_heads != 0:
             raise ValueError("d_model must be divisible by n_heads.")
@@ -205,7 +208,9 @@ class AutoCorrelationBlock(nn.Module):
 
     def _split(self, x: torch.Tensor) -> torch.Tensor:
         b, seq_len, _ = x.shape
-        return x.view(b, seq_len, self.n_heads, self.head_dim).transpose(1, 2)  # B,H,L,C
+        return x.view(b, seq_len, self.n_heads, self.head_dim).transpose(
+            1, 2
+        )  # B,H,L,C
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, seq_len, _ = x.shape
@@ -237,12 +242,18 @@ class AutoCorrelationBlock(nn.Module):
             weights = torch.softmax(weights, dim=1)
 
             tiled_v = v.repeat(1, 1, 2, 1)  # (B,H,2L,C) -- avoids wraparound in gather
-            base_index = torch.arange(seq_len, device=v.device).view(1, 1, seq_len, 1).expand(
-                b, self.n_heads, seq_len, self.head_dim
+            base_index = (
+                torch.arange(seq_len, device=v.device)
+                .view(1, 1, seq_len, 1)
+                .expand(b, self.n_heads, seq_len, self.head_dim)
             )
             agg = torch.zeros_like(v)
             for i in range(k_top):
-                delay_i = delays[:, i].view(b, 1, 1, 1).expand(b, self.n_heads, seq_len, self.head_dim)
+                delay_i = (
+                    delays[:, i]
+                    .view(b, 1, 1, 1)
+                    .expand(b, self.n_heads, seq_len, self.head_dim)
+                )
                 gather_index = base_index + delay_i
                 rolled = torch.gather(tiled_v, dim=2, index=gather_index)
                 w_i = weights[:, i].view(b, 1, 1, 1)
@@ -383,10 +394,22 @@ def make_autoformer_dataset(
 
     features = [spread, z, ret_1, momentum_5, vol_20]
 
-    if arma_result is not None and getattr(arma_result, "conditional_volatility", None) is not None:
-        features.append(arma_result.conditional_volatility.astype(float).rename("conditional_volatility"))
-    if arma_result is not None and getattr(arma_result, "vol_scaled_z_score", None) is not None:
-        features.append(arma_result.vol_scaled_z_score.astype(float).rename("vol_scaled_z_score"))
+    if (
+        arma_result is not None
+        and getattr(arma_result, "conditional_volatility", None) is not None
+    ):
+        features.append(
+            arma_result.conditional_volatility.astype(float).rename(
+                "conditional_volatility"
+            )
+        )
+    if (
+        arma_result is not None
+        and getattr(arma_result, "vol_scaled_z_score", None) is not None
+    ):
+        features.append(
+            arma_result.vol_scaled_z_score.astype(float).rename("vol_scaled_z_score")
+        )
 
     df = pd.concat(features, axis=1).replace([np.inf, -np.inf], np.nan).dropna()
     feature_names = list(df.columns)
@@ -436,7 +459,9 @@ def make_latest_autoformer_window(
 # ---------------------------------------------------------------------------
 
 
-def _compute_metrics(y_true: np.ndarray, prob: np.ndarray, threshold: float = 0.5) -> ClassificationMetrics:
+def _compute_metrics(
+    y_true: np.ndarray, prob: np.ndarray, threshold: float = 0.5
+) -> ClassificationMetrics:
     y_true = y_true.astype(int)
     y_pred = (prob >= threshold).astype(int)
     tp = int(((y_pred == 1) & (y_true == 1)).sum())
@@ -489,19 +514,19 @@ def purged_chronological_split(
     if len(positions) != n:
         raise ValueError(f"positions length ({len(positions)}) must match n ({n})")
 
-    idx        = np.arange(n)
+    idx = np.arange(n)
     test_start = int(n * (1.0 - test_fraction))
-    val_start  = int(test_start - n * val_fraction)
-    val_start  = max(0, min(val_start, test_start))
+    val_start = int(test_start - n * val_fraction)
+    val_start = max(0, min(val_start, test_start))
 
-    val_start_pos  = positions[val_start] if val_start < n else positions[-1]
+    val_start_pos = positions[val_start] if val_start < n else positions[-1]
     test_start_pos = positions[test_start] if test_start < n else positions[-1]
 
     train_idx = idx[:val_start][positions[:val_start] <= val_start_pos - embargo]
-    val_idx   = idx[val_start:test_start][
+    val_idx = idx[val_start:test_start][
         positions[val_start:test_start] <= test_start_pos - embargo
     ]
-    test_idx  = idx[test_start:]
+    test_idx = idx[test_start:]
 
     return train_idx, val_idx, test_idx
 
@@ -514,15 +539,20 @@ def _window_summary_features(x: np.ndarray) -> np.ndarray:
 
 
 def _fit_logistic_numpy(
-    X: np.ndarray, y: np.ndarray, *, lr: float = 0.1, epochs: int = 2000, l2: float = 1e-3,
+    X: np.ndarray,
+    y: np.ndarray,
+    *,
+    lr: float = 0.1,
+    epochs: int = 2000,
+    l2: float = 1e-3,
 ) -> np.ndarray:
     """Tiny L2-regularised logistic regression (no sklearn dependency)."""
     Xb = np.concatenate([X, np.ones((len(X), 1))], axis=1)
-    w  = np.zeros(Xb.shape[1])
+    w = np.zeros(Xb.shape[1])
     for _ in range(epochs):
-        p    = 1.0 / (1.0 + np.exp(-Xb @ w))
+        p = 1.0 / (1.0 + np.exp(-Xb @ w))
         grad = Xb.T @ (p - y) / len(y) + l2 * np.concatenate([w[:-1], [0.0]])
-        w   -= lr * grad
+        w -= lr * grad
     return w
 
 
@@ -550,21 +580,25 @@ def evaluate_baselines(
     wasn't also present in the same checkout.
     """
     train_idx, _val_idx, test_idx = purged_chronological_split(
-        len(labels), window_positions, embargo, val_fraction, test_fraction,
+        len(labels),
+        window_positions,
+        embargo,
+        val_fraction,
+        test_fraction,
     )
     y_train, y_test = labels[train_idx], labels[test_idx]
 
     results = {"all_ones": _compute_metrics(y_test, np.ones(len(test_idx))).__dict__}
 
-    feats  = _window_summary_features(data.x)
+    feats = _window_summary_features(data.x)
     scaler = WindowStandardScaler().fit(feats[train_idx][:, None, :])
     f_train = scaler.transform(feats[train_idx][:, None, :])[:, 0, :]
-    f_test  = scaler.transform(feats[test_idx][:, None, :])[:, 0, :]
+    f_test = scaler.transform(feats[test_idx][:, None, :])[:, 0, :]
 
     w = _fit_logistic_numpy(f_train, y_train.astype(float))
-    p_test = 1.0 / (1.0 + np.exp(
-        -(np.concatenate([f_test, np.ones((len(f_test), 1))], axis=1) @ w)
-    ))
+    p_test = 1.0 / (
+        1.0 + np.exp(-(np.concatenate([f_test, np.ones((len(f_test), 1))], axis=1) @ w))
+    )
     results["logistic"] = _compute_metrics(y_test, p_test).__dict__
 
     return results
@@ -614,7 +648,9 @@ def train_autoformer_classifier(
     opt = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     model.to(device)
-    train_loader = DataLoader(TensorDataset(x_train, y_train), batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(
+        TensorDataset(x_train, y_train), batch_size=batch_size, shuffle=True
+    )
 
     train_loss: list[float] = []
     val_loss: list[float] = []
@@ -648,7 +684,9 @@ def train_autoformer_classifier(
 
         if v_loss < best_val:
             best_val = v_loss
-            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            best_state = {
+                k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+            }
             patience = 0
         else:
             patience += 1
@@ -684,7 +722,9 @@ def train_autoformer_classifier(
             npv=0.0,
         )
 
-    test_metrics = _compute_metrics(y_test_np, test_probs, threshold=model.regime_threshold)
+    test_metrics = _compute_metrics(
+        y_test_np, test_probs, threshold=model.regime_threshold
+    )
 
     return TrainHistory(
         train_loss=train_loss,
@@ -800,7 +840,7 @@ def compute_exit_diagnostics_from_spread(
         trend_ratio       high => spread is mostly drifting/trending
         trend_slope       direction of the slow spread drift
         autocorr_strength high => repeated cycle still exists
-    
+
         ```text
         Seasonal ratio      : share of decomposed energy in the seasonal/cyclical part
         Trend ratio         : share of decomposed energy in the trend/drift part
@@ -833,8 +873,8 @@ def compute_exit_diagnostics_from_spread(
     # dominate the ratio.
     seasonal_centered = seasonal - seasonal.mean()
     trend_centered = trend - trend.mean()
-    seasonal_energy = float(np.mean(seasonal_centered ** 2))
-    trend_energy = float(np.mean(trend_centered ** 2))
+    seasonal_energy = float(np.mean(seasonal_centered**2))
+    trend_energy = float(np.mean(trend_centered**2))
     denom = seasonal_energy + trend_energy + 1e-12
     seasonal_ratio = seasonal_energy / denom
     trend_ratio = trend_energy / denom
