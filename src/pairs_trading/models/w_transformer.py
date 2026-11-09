@@ -99,10 +99,10 @@ class WaveletDecomposition:
 class WaveletWindowData:
     """Supervised windows produced from an existing spread pipeline output."""
 
-    x: np.ndarray                        # (N, input_length, total_components)
-    y_components: np.ndarray             # (N, forecast_horizon, total_components)
-    y_spread: np.ndarray                 # (N, forecast_horizon) unscaled spread target
-    component_names: tuple[str, ...]     # name per column in x/y_components
+    x: np.ndarray  # (N, input_length, total_components)
+    y_components: np.ndarray  # (N, forecast_horizon, total_components)
+    y_spread: np.ndarray  # (N, forecast_horizon) unscaled spread target
+    component_names: tuple[str, ...]  # name per column in x/y_components
     input_length: int
     forecast_horizon: int
     target_index: pd.Index
@@ -171,13 +171,13 @@ def _align_features(
     conditional volatility, and vol-scaled z-score.
     """
     cols: dict[str, pd.Series] = {
-        "spread":  spread_data.spread,
+        "spread": spread_data.spread,
         "z_score": spread_data.z_score,
     }
     if arma_result is not None:
-        cols["arma_residuals"]        = arma_result.arma_residuals
+        cols["arma_residuals"] = arma_result.arma_residuals
         cols["conditional_volatility"] = arma_result.conditional_volatility
-        cols["vol_scaled_z_score"]     = arma_result.vol_scaled_z_score
+        cols["vol_scaled_z_score"] = arma_result.vol_scaled_z_score
 
     df = pd.DataFrame(cols).dropna()
     if df.empty:
@@ -325,8 +325,8 @@ def make_wavelet_forecasting_dataset(
     resulting bands are concatenated so ``x`` has shape
     ``(N, input_length, n_features * n_wavelet_components)``.
 
-    When ``arma_result`` is None only spread and z-score are used,
-    matching the original univariate behaviour.
+    When ``arma_result`` is None a single series is used (``target`` of a
+    ``SpreadData``, or a plain Series), matching the original univariate behaviour.
 
     ``y_components`` has shape ``(N, forecast_horizon, total_components)``.
     ``y_spread`` keeps the unscaled recombined spread target for evaluation.
@@ -337,7 +337,7 @@ def make_wavelet_forecasting_dataset(
         raise ValueError("forecast_horizon must be at least 1")
 
     # Build aligned feature frame
-    if isinstance(source, (SpreadData,)) or arma_result is not None:
+    if arma_result is not None:
         spread_data = source if isinstance(source, SpreadData) else None
         if spread_data is None:
             raise TypeError(
@@ -345,7 +345,7 @@ def make_wavelet_forecasting_dataset(
             )
         df, feature_names = _align_features(spread_data, arma_result)
     else:
-        # Plain pd.Series — univariate path
+        # No ARMA/GARCH result: univariate path (SpreadData target or plain Series)
         series = _coerce_series(source, target=target)
         df = series.to_frame(name="spread")
         feature_names = ("spread",)
@@ -378,8 +378,7 @@ def make_wavelet_forecasting_dataset(
 
     # y_spread: sum only the spread-feature components for evaluation
     spread_cols = [
-        idx for idx, name in enumerate(component_names)
-        if name.startswith("spread_")
+        idx for idx, name in enumerate(component_names) if name.startswith("spread_")
     ]
     if spread_cols:
         y_spread = y_components_unscaled[:, :, spread_cols].sum(axis=-1)
@@ -431,7 +430,7 @@ def make_latest_wavelet_window(
     if input_length < 2:
         raise ValueError("input_length must be at least 2")
 
-    if isinstance(source, SpreadData) or arma_result is not None:
+    if arma_result is not None:
         spread_data = source if isinstance(source, SpreadData) else None
         if spread_data is None:
             raise TypeError(
@@ -447,7 +446,9 @@ def make_latest_wavelet_window(
     if len(components) < input_length:
         raise ValueError("not enough observations for input_length")
 
-    x = components[-input_length:][np.newaxis, :, :]  # (1, input_length, total_components)
+    x = components[-input_length:][
+        np.newaxis, :, :
+    ]  # (1, input_length, total_components)
 
     if scaling is not None:
         x = scaling.transform(x)
