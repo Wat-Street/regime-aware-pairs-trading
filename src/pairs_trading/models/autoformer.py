@@ -20,7 +20,6 @@ import numpy as np
 try:
     import torch
     from torch import nn
-    import torch.nn.functional as F
     from torch.utils.data import DataLoader, TensorDataset
 except ImportError as exc:  # pragma: no cover
     raise ImportError("PyTorch is required for pairs_trading.models.autoformer") from exc
@@ -205,11 +204,11 @@ class AutoCorrelationBlock(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def _split(self, x: torch.Tensor) -> torch.Tensor:
-        b, l, _ = x.shape
-        return x.view(b, l, self.n_heads, self.head_dim).transpose(1, 2)  # B,H,L,C
+        b, seq_len, _ = x.shape
+        return x.view(b, seq_len, self.n_heads, self.head_dim).transpose(1, 2)  # B,H,L,C
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        b, l, _ = x.shape
+        b, seq_len, _ = x.shape
         q = self._split(self.q_proj(x))
         k = self._split(self.k_proj(x))
         v = self._split(self.v_proj(x))
@@ -217,8 +216,8 @@ class AutoCorrelationBlock(nn.Module):
         # FFT autocorrelation over time dimension. Shape: B,H,L,C.
         q_fft = torch.fft.rfft(q.float(), dim=2)
         k_fft = torch.fft.rfft(k.float(), dim=2)
-        corr = torch.fft.irfft(q_fft * torch.conj(k_fft), n=l, dim=2)
-        k_top = min(self.top_k, max(1, l - 1))
+        corr = torch.fft.irfft(q_fft * torch.conj(k_fft), n=seq_len, dim=2)
+        k_top = min(self.top_k, max(1, seq_len - 1))
 
         if self.training:
             # Algorithm 3: one delay profile shared by the whole batch.
@@ -238,18 +237,18 @@ class AutoCorrelationBlock(nn.Module):
             weights = torch.softmax(weights, dim=1)
 
             tiled_v = v.repeat(1, 1, 2, 1)  # (B,H,2L,C) -- avoids wraparound in gather
-            base_index = torch.arange(l, device=v.device).view(1, 1, l, 1).expand(
-                b, self.n_heads, l, self.head_dim
+            base_index = torch.arange(seq_len, device=v.device).view(1, 1, seq_len, 1).expand(
+                b, self.n_heads, seq_len, self.head_dim
             )
             agg = torch.zeros_like(v)
             for i in range(k_top):
-                delay_i = delays[:, i].view(b, 1, 1, 1).expand(b, self.n_heads, l, self.head_dim)
+                delay_i = delays[:, i].view(b, 1, 1, 1).expand(b, self.n_heads, seq_len, self.head_dim)
                 gather_index = base_index + delay_i
                 rolled = torch.gather(tiled_v, dim=2, index=gather_index)
                 w_i = weights[:, i].view(b, 1, 1, 1)
                 agg = agg + w_i * rolled
 
-        out = agg.transpose(1, 2).contiguous().view(b, l, self.d_model)
+        out = agg.transpose(1, 2).contiguous().view(b, seq_len, self.d_model)
         return self.out_proj(self.dropout(out))
 
 
@@ -820,12 +819,12 @@ def compute_exit_diagnostics_from_spread(
         raise ValueError("Not enough spread observations for exit diagnostics.")
 
     window = spread.iloc[-input_length:].to_numpy(dtype=float)
-    l = len(window)
-    kernel = max(3, min(int(moving_avg), l))
+    n_obs = len(window)
+    kernel = max(3, min(int(moving_avg), n_obs))
 
     # Causal moving-average trend: no future values are used.
     trend = np.empty_like(window)
-    for i in range(l):
+    for i in range(n_obs):
         start = max(0, i - kernel + 1)
         trend[i] = window[start : i + 1].mean()
     seasonal = window - trend
@@ -840,8 +839,8 @@ def compute_exit_diagnostics_from_spread(
     seasonal_ratio = seasonal_energy / denom
     trend_ratio = trend_energy / denom
 
-    x_axis = np.arange(l, dtype=float)
-    trend_slope = float(np.polyfit(x_axis, trend, 1)[0]) if l >= 2 else 0.0
+    x_axis = np.arange(n_obs, dtype=float)
+    trend_slope = float(np.polyfit(x_axis, trend, 1)[0]) if n_obs >= 2 else 0.0
 
     # Autocorrelation strength of the seasonal component. Use positive max
     # correlation across reasonable lags as a simple cycle confidence measure.
@@ -849,7 +848,7 @@ def compute_exit_diagnostics_from_spread(
     if np.std(s) < 1e-12:
         autocorr_strength = 0.0
     else:
-        max_lag = min(l // 2, 30)
+        max_lag = min(n_obs // 2, 30)
         vals = []
         for lag in range(2, max_lag + 1):
             a = s[:-lag]
