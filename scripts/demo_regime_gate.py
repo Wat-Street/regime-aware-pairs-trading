@@ -322,11 +322,12 @@ def save_real_data(
     import pickle
     from datetime import datetime
     from pairs_trading.data.fetcher import fetch_pair_data
-    from pairs_trading.data.schemas import Asset
+    from pairs_trading.data.schemas import Asset, Pair
     from pairs_trading.data.spread import compute_spread, fit_arma_garch
 
     asset_a = Asset(symbol=symbol_a)
     asset_b = Asset(symbol=symbol_b)
+    pair = Pair(asset_a=asset_a, asset_b=asset_b)
 
     start_dt = datetime.strptime(start, "%Y-%m-%d")
     end_dt   = datetime.strptime(end,   "%Y-%m-%d")
@@ -335,10 +336,10 @@ def save_real_data(
     data_a, data_b = fetch_pair_data(asset_a, asset_b, start_date=start_dt, end_date=end_dt)
 
     print("Computing spread...")
-    spread_data = compute_spread(data_a, data_b)
+    spread_data = compute_spread(pair, data_a, data_b)
 
     print("Fitting ARMA/GARCH...")
-    arma_result = fit_arma_garch(spread_data)
+    arma_result = fit_arma_garch(spread_data.spread)
 
     DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(DATA_PATH, "wb") as f:
